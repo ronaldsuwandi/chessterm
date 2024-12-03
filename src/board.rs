@@ -56,33 +56,8 @@ impl Board {
         self.free = !self.occupied;
     }
 
-    /// moves the given piece without any checking
-    pub fn move_piece(&mut self, from: u64, to: u64, is_white: bool) {
-        let piece = if is_white {
-            if self.white_pawns & from != 0 {
-                Some(&mut self.white_pawns)
-            } else {
-                // TODO check for queen/bishops/rooks/knights/king
-                None
-            }
-        } else {
-            if self.black_pawns & from != 0 {
-                Some(&mut self.black_pawns)
-            } else {
-                // TODO check for queen/bishops/rooks/knights/king
-                None
-            }
-        };
-
-        if let Some(piece) = piece {
-           *piece = (*piece ^ from) | to;
-           self.update_pieces();;
-        }
-    }
-
-    /// removes piece from the board
-    pub fn remove_piece(&mut self, position: u64, is_white: bool) {
-        let piece = if is_white {
+    pub fn get_piece_at(&mut self, position: u64, is_white: bool) -> Option<&mut u64> {
+        if is_white {
             if self.white_pawns & position != 0 {
                 Some(&mut self.white_pawns)
             } else {
@@ -96,10 +71,20 @@ impl Board {
                 // TODO check for queen/bishops/rooks/knights/king
                 None
             }
-        };
+        }
+    }
 
+    /// moves the given piece without any checking
+    pub fn move_piece(&mut self, from: u64, to: u64, is_white: bool) {
+        if let Some(piece) = self.get_piece_at(from, is_white) {
+           *piece = (*piece ^ from) | to;
+           self.update_pieces();;
+        }
+    }
 
-        if let Some(piece) = piece {
+    /// removes piece from the board
+    pub fn remove_piece(&mut self, position: u64, is_white: bool) {
+        if let Some(piece) = self.get_piece_at(position, is_white) {
             *piece = *piece ^ position;
             self.update_pieces();
         }

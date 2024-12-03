@@ -30,11 +30,12 @@ impl Game {
         if (from & pawns) == 0 {
             return false;
         }
-        // check legal moves
+        // check pseudolegal moves
         if (to & pseudolegal_pawn_moves) == 0 {
             return false;
         }
 
+        // TODO check for actual legal moves
 
         if is_capture {
             self.board.move_piece(from, to, is_white);
@@ -45,14 +46,7 @@ impl Game {
         } else {
             // Normal move
             // TODO check for pin
-            // if is_white {
-            //     Board::move_piece(&mut self.board.white_pawns, from, to);
-            // } else {
-            //     Board::move_piece(&mut self.board.black_pawns, from, to);
-            // }
-
             self.board.move_piece(from, to, is_white);
-            // self.board.update_pieces();
             true
         }
     }
