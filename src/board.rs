@@ -57,21 +57,32 @@ impl Board {
     }
 
     pub fn get_piece_at(&mut self, position: u64, is_white: bool) -> Option<&mut u64> {
-        if is_white {
-            if self.white_pawns & position != 0 {
-                Some(&mut self.white_pawns)
+        let pieces: [&mut u64; /*6*/ 1] = if is_white {
+                [
+                    &mut self.white_pawns,
+                    // &mut self.white_rooks,
+                    // &mut self.white_knights,
+                    // &mut self.white_bishops,
+                    // &mut self.white_queens,
+                    // &mut self.white_kings,
+                ]
             } else {
-                // TODO check for queen/bishops/rooks/knights/king
-                None
+                [
+                    &mut self.black_pawns,
+                    // &mut self.black_rooks,
+                    // &mut self.black_knights,
+                    // &mut self.black_bishops,
+                    // &mut self.black_queens,
+                    // &mut self.black_kings,
+                ]
+            };
+
+            for piece in pieces {
+                if (*piece & position) != 0 {
+                    return Some(piece);
+                }
             }
-        } else {
-            if self.black_pawns & position != 0 {
-                Some(&mut self.black_pawns)
-            } else {
-                // TODO check for queen/bishops/rooks/knights/king
-                None
-            }
-        }
+            None
     }
 
     /// moves the given piece without any checking
