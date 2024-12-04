@@ -3,17 +3,17 @@ use crate::moves::compute_pawns_moves;
 #[derive(Debug)]
 pub struct Board {
     pub white_pawns: u64,
-    // pub white_knights: u64,
-    // pub white_rooks: u64,
-    // pub white_bishops: u64,
-    // pub white_queens: u64,
-    // pub white_king: u64,
+    pub white_knights: u64,
+    pub white_rooks: u64,
+    pub white_bishops: u64,
+    pub white_queens: u64,
+    pub white_king: u64,
     pub black_pawns: u64,
-    // pub black_knights: u64,
-    // pub black_rooks: u64,
-    // pub black_bishops: u64,
-    // pub black_queens: u64,
-    // pub black_king: u64,
+    pub black_knights: u64,
+    pub black_rooks: u64,
+    pub black_bishops: u64,
+    pub black_queens: u64,
+    pub black_king: u64,
     pub white_pieces: u64,
     pub black_pieces: u64,
     pub occupied: u64,
@@ -21,16 +21,41 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn new(white_pawns: u64, black_pawns: u64) -> Board {
-        let white_pieces = white_pawns;
-        let black_pieces = black_pawns;
+    pub fn new(
+        white_pawns: u64,
+        white_knights: u64,
+        white_rooks: u64,
+        white_bishops: u64,
+        white_queens: u64,
+        white_king: u64,
+        black_pawns: u64,
+        black_knights: u64,
+        black_rooks: u64,
+        black_bishops: u64,
+        black_queens: u64,
+        black_king: u64,
+    ) -> Board {
+        let white_pieces =
+            white_pawns | white_knights | white_rooks | white_bishops | white_queens | white_king;
+        let black_pieces =
+            black_pawns | black_knights | black_rooks | black_bishops | black_queens | black_king;
 
         let occupied = white_pieces | black_pieces;
         let free = !occupied;
 
         Board {
             white_pawns,
+            white_knights,
+            white_rooks,
+            white_bishops,
+            white_queens,
+            white_king,
             black_pawns,
+            black_knights,
+            black_rooks,
+            black_bishops,
+            black_queens,
+            black_king,
 
             white_pieces,
             black_pieces,
@@ -108,29 +133,29 @@ impl Board {
                 let square_index = rank * 8 + file;
 
                 let piece = if (self.white_pawns >> square_index) & 1 != 0 {
-                    'P'
+                    '♟'
                 } else if (self.black_pawns >> square_index) & 1 != 0 {
-                    'p'
-                // } else if (white_rooks >> square_index) & 1 != 0 {
-                //     'R'
-                // } else if (black_rooks >> square_index) & 1 != 0 {
-                //     'r'
-                // } else if (white_knights >> square_index) & 1 != 0 {
-                //     'N'
-                // } else if (black_knights >> square_index) & 1 != 0 {
-                //     'n'
-                // } else if (white_bishops >> square_index) & 1 != 0 {
-                //     'B'
-                // } else if (black_bishops >> square_index) & 1 != 0 {
-                //     'b'
-                // } else if (white_queens >> square_index) & 1 != 0 {
-                //     'Q'
-                // } else if (black_queens >> square_index) & 1 != 0 {
-                //     'q'
-                // } else if (white_kings >> square_index) & 1 != 0 {
-                //     'K'
-                // } else if (black_kings >> square_index) & 1 != 0 {
-                //     'k'
+                    '♙'
+                } else if (self.white_rooks >> square_index) & 1 != 0 {
+                    '♜'
+                } else if (self.black_rooks >> square_index) & 1 != 0 {
+                    '♖'
+                } else if (self.white_knights >> square_index) & 1 != 0 {
+                    '♞'
+                } else if (self.black_knights >> square_index) & 1 != 0 {
+                    '♘'
+                } else if (self.white_bishops >> square_index) & 1 != 0 {
+                    '♝'
+                } else if (self.black_bishops >> square_index) & 1 != 0 {
+                    '♗'
+                } else if (self.white_queens >> square_index) & 1 != 0 {
+                    '♛'
+                } else if (self.black_queens >> square_index) & 1 != 0 {
+                    '♕'
+                } else if (self.white_king >> square_index) & 1 != 0 {
+                    '♚'
+                } else if (self.black_king >> square_index) & 1 != 0 {
+                    '♔'
                 } else {
                     '.' // Empty square
                 };
@@ -158,7 +183,7 @@ impl Default for Board {
         let white_pawns = 0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_00000000;
         let black_pawns = 0b00000000_11111111_00000000_00000000_00000000_00000000_00000000_00000000;
 
-        Self::new(white_pawns, black_pawns)
+        Self::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0)
     }
 }
 
@@ -387,7 +412,7 @@ pub mod tests {
             .add_piece('h', 7)
             .build();
 
-        let board = Board::new(white_pawns, black_pawns);
+        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         assert!(board.is_capture(bitboard_single('b', 3).unwrap(), true));
         assert!(board.is_capture(bitboard_single('g', 3).unwrap(), true));
@@ -408,7 +433,7 @@ pub mod tests {
             .build();
         let black_pawns = PositionBuilder::new().add_piece('f', 7).build();
 
-        let mut board = Board::new(white_pawns, black_pawns);
+        let mut board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         board.move_piece(
             bitboard_single('e', 2).unwrap(),
@@ -450,33 +475,31 @@ pub mod tests {
             .add_piece('d', 2)
             .add_piece('e', 2)
             .build();
-        let black_pawns = PositionBuilder::new()
-            .add_piece('f', 7)
-            .build();
+        let black_pawns = PositionBuilder::new().add_piece('f', 7).build();
 
-        let mut board = Board::new(white_pawns, black_pawns);
+        let mut board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         assert_eq!(white_pawns, board.white_pawns);
         assert_eq!(black_pawns, board.black_pawns);
 
         // TODO test with other piece too
 
-        board.remove_piece(bitboard_single('e',2).unwrap(), true);
-        board.remove_piece(bitboard_single('d',2).unwrap(), true);
+        board.remove_piece(bitboard_single('e', 2).unwrap(), true);
+        board.remove_piece(bitboard_single('d', 2).unwrap(), true);
         assert_eq!(0, board.white_pawns);
         assert_eq!(black_pawns, board.black_pawns);
 
         // remove non-existent piece
-        board.remove_piece(bitboard_single('e',2).unwrap(), false);
+        board.remove_piece(bitboard_single('e', 2).unwrap(), false);
         assert_eq!(0, board.white_pawns);
         assert_eq!(black_pawns, board.black_pawns);
 
-        board.remove_piece(bitboard_single('f',7).unwrap(), true);
+        board.remove_piece(bitboard_single('f', 7).unwrap(), true);
         assert_eq!(0, board.white_pawns);
         assert_eq!(black_pawns, board.black_pawns);
 
         // remove correct black piece
-        board.remove_piece(bitboard_single('f',7).unwrap(), false);
+        board.remove_piece(bitboard_single('f', 7).unwrap(), false);
         assert_eq!(0, board.white_pawns);
         assert_eq!(0, board.black_pawns);
     }
@@ -492,18 +515,30 @@ pub mod tests {
             .add_piece('g', 7)
             .build();
 
-        let mut board = Board::new(white_pawns, black_pawns);
+        let mut board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
-        let actual_white_piece = *board.get_piece_at(bitboard_single('e', 2).unwrap(), true).unwrap();
-        let actual_black_piece = *board.get_piece_at(bitboard_single('f', 7).unwrap(), false).unwrap();
+        let actual_white_piece = *board
+            .get_piece_at(bitboard_single('e', 2).unwrap(), true)
+            .unwrap();
+        let actual_black_piece = *board
+            .get_piece_at(bitboard_single('f', 7).unwrap(), false)
+            .unwrap();
         assert_eq!(board.white_pawns, actual_white_piece);
         assert_eq!(board.black_pawns, actual_black_piece);
 
         // TODO test with more pieces
 
-
-        assert_eq!(None, board.get_piece_at(bitboard_single('e', 2).unwrap(), false));
-        assert_eq!(None, board.get_piece_at(bitboard_single('f', 7).unwrap(), true));
-        assert_eq!(None, board.get_piece_at(bitboard_single('a', 5).unwrap(), true));
+        assert_eq!(
+            None,
+            board.get_piece_at(bitboard_single('e', 2).unwrap(), false)
+        );
+        assert_eq!(
+            None,
+            board.get_piece_at(bitboard_single('f', 7).unwrap(), true)
+        );
+        assert_eq!(
+            None,
+            board.get_piece_at(bitboard_single('a', 5).unwrap(), true)
+        );
     }
 }

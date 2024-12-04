@@ -1,4 +1,7 @@
-use crate::board::{is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_H, MASK_RANK_2, MASK_RANK_7};
+use crate::board::{
+    is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H,
+    MASK_RANK_2, MASK_RANK_7,
+};
 
 // move generation related, only generate pseudolegal moves
 
@@ -57,7 +60,6 @@ fn compute_pawns_diagonal_captures(board: &Board, is_white: bool) -> u64 {
         opponents = board.black_pieces;
         left_diagonal = moves << 7 & opponents & !MASK_FILE_H; // prevent wrap-around on H file for left diagonal move
         right_diagonal = moves << 9 & opponents & !MASK_FILE_A; // prevent wrap-around on A file on right diagonal move
-
     } else {
         moves = board.black_pawns;
         opponents = board.white_pieces;
@@ -69,12 +71,27 @@ fn compute_pawns_diagonal_captures(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
-// REVERSE ENGINEER MOVES
+fn precompute_knight_moves() -> [u64; 64] {
+    let mut knight_moves = [0u64; 64];
+    for square in 0..64 {
+        let bitboard = 1u64 << square;
+        // use mask to avoid wrap around
+        knight_moves[square] = ((bitboard << 17) & !MASK_FILE_A) // UP 2 + LEFT 1
+            | ((bitboard << 15) & !MASK_FILE_H) // UP 2 + RIGHT 1
+            | ((bitboard << 10) & !(MASK_FILE_A | MASK_FILE_B)) // UP 1 + RIGHT 2
+            | ((bitboard << 6) & !(MASK_FILE_G | MASK_FILE_H)) // UP 1 + LEFT 2
+            | ((bitboard >> 17) & !MASK_FILE_H) // DOWN 2 + RIGHT 1
+            | ((bitboard >> 15) & !MASK_FILE_A) // DOWN 2 + LEFT 1
+            | ((bitboard >> 10) & !(MASK_FILE_G | MASK_FILE_H)) // DOWN 1 + LEFT 2
+            | ((bitboard >> 6) & !(MASK_FILE_A | MASK_FILE_B)); // DOWN 1 + RIGHT 2
+    }
+    knight_moves
+}
 
+// REVERSE ENGINEER MOVES
 pub fn detect_pawns_source_for_target(board: &Board, target: u64, is_white: bool) -> Vec<u64> {
     // Reverse shifts and bitwise checks to find the source square
     let mut sources = Vec::new();
-
 
     let legal_pawn_moves = compute_pawns_moves(&board, is_white);
     render_bitboard(&legal_pawn_moves, 'c');
@@ -92,9 +109,13 @@ pub fn detect_pawns_source_for_target(board: &Board, target: u64, is_white: bool
     sources
 }
 
-fn detect_pawns_source_for_target_single_move(board: &Board, target: u64, is_white: bool) -> Vec<u64> {
+fn detect_pawns_source_for_target_single_move(
+    board: &Board,
+    target: u64,
+    is_white: bool,
+) -> Vec<u64> {
     let mut sources = Vec::new();
-        let pawns = if is_white {
+    let pawns = if is_white {
         board.white_pawns
     } else {
         board.black_pawns
@@ -106,13 +127,15 @@ fn detect_pawns_source_for_target_single_move(board: &Board, target: u64, is_whi
         return sources;
     }
 
-    if is_white && !is_rank(target, 1) { // only process if target is rank 2 and above
+    if is_white && !is_rank(target, 1) {
+        // only process if target is rank 2 and above
         let possible_source = target >> 8;
         println!("possible source {} ", possible_source);
         if (pawns | possible_source) == pawns {
             sources.push(possible_source);
         }
-    } else if !is_white && !is_rank(target, 8) { // only process if target is rank 7 and below
+    } else if !is_white && !is_rank(target, 8) {
+        // only process if target is rank 7 and below
         let possible_source = target << 8;
         if (pawns | possible_source) == pawns {
             sources.push(possible_source);
@@ -121,9 +144,13 @@ fn detect_pawns_source_for_target_single_move(board: &Board, target: u64, is_whi
     sources
 }
 
-fn detect_pawns_source_for_target_double_move(board: &Board, target: u64, is_white: bool) -> Vec<u64> {
+fn detect_pawns_source_for_target_double_move(
+    board: &Board,
+    target: u64,
+    is_white: bool,
+) -> Vec<u64> {
     let mut sources = Vec::new();
-        let pawns = if is_white {
+    let pawns = if is_white {
         board.white_pawns
     } else {
         board.black_pawns
@@ -135,13 +162,15 @@ fn detect_pawns_source_for_target_double_move(board: &Board, target: u64, is_whi
         return sources;
     }
 
-    if is_white && !is_rank(target, 1) && !is_rank(target, 2) { // only process if target is rank 3 and above
+    if is_white && !is_rank(target, 1) && !is_rank(target, 2) {
+        // only process if target is rank 3 and above
         let possible_source = target >> 16;
         println!("possible source {} ", possible_source);
         if (pawns & possible_source) != 0 {
             sources.push(possible_source);
         }
-    } else if !is_white && !is_rank(target, 8) && !is_rank(target, 7) { // only process if target is rank 6 and below
+    } else if !is_white && !is_rank(target, 8) && !is_rank(target, 7) {
+        // only process if target is rank 6 and below
         let possible_source = target << 16;
         if (pawns & possible_source) != 0 {
             sources.push(possible_source);
@@ -152,8 +181,8 @@ fn detect_pawns_source_for_target_double_move(board: &Board, target: u64, is_whi
 
 #[cfg(test)]
 pub mod tests {
-    use crate::board::{bit_pos, bitboard_single, render_bitboard, Board, PositionBuilder};
     use super::*;
+    use crate::board::{bit_pos, bitboard_single, render_bitboard, Board, PositionBuilder};
     #[test]
     fn test_detect_pawn_source_for_target_single_move() {
         let white_pawns: u64 = PositionBuilder::new()
@@ -168,7 +197,7 @@ pub mod tests {
             .add_piece('d', 4)
             .add_piece('g', 3)
             .build();
-        let board = Board::new(white_pawns, black_pawns);
+        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         let expected_e4_white = vec![bitboard_single('e', 3).unwrap()];
         let expected_g3_white: Vec<u64> = Vec::new();
@@ -176,13 +205,48 @@ pub mod tests {
         let expected_g2_black: Vec<u64> = Vec::new();
         let expected_a6_black = vec![bitboard_single('a', 7).unwrap()];
 
-        assert_eq!(expected_e4_white, detect_pawns_source_for_target_single_move(&board, bitboard_single('e', 4).unwrap(), true));
-        assert_eq!(expected_g3_white, detect_pawns_source_for_target_single_move(&board, bitboard_single('g', 3).unwrap(), true));
-        assert_eq!(expected_h3_white, detect_pawns_source_for_target_single_move(&board, bitboard_single('h', 3).unwrap(), true));
-        assert_eq!(expected_g2_black, detect_pawns_source_for_target_single_move(&board, bitboard_single('g', 2).unwrap(), false));
-        assert_eq!(expected_a6_black, detect_pawns_source_for_target_single_move(&board, bitboard_single('a', 6).unwrap(), false));
+        assert_eq!(
+            expected_e4_white,
+            detect_pawns_source_for_target_single_move(
+                &board,
+                bitboard_single('e', 4).unwrap(),
+                true
+            )
+        );
+        assert_eq!(
+            expected_g3_white,
+            detect_pawns_source_for_target_single_move(
+                &board,
+                bitboard_single('g', 3).unwrap(),
+                true
+            )
+        );
+        assert_eq!(
+            expected_h3_white,
+            detect_pawns_source_for_target_single_move(
+                &board,
+                bitboard_single('h', 3).unwrap(),
+                true
+            )
+        );
+        assert_eq!(
+            expected_g2_black,
+            detect_pawns_source_for_target_single_move(
+                &board,
+                bitboard_single('g', 2).unwrap(),
+                false
+            )
+        );
+        assert_eq!(
+            expected_a6_black,
+            detect_pawns_source_for_target_single_move(
+                &board,
+                bitboard_single('a', 6).unwrap(),
+                false
+            )
+        );
     }
-    
+
     #[test]
     fn test_detect_pawn_source_for_target_double_move() {
         let white_pawns: u64 = PositionBuilder::new()
@@ -197,7 +261,7 @@ pub mod tests {
             .add_piece('d', 4)
             .add_piece('g', 3)
             .build();
-        let board = Board::new(white_pawns, black_pawns);
+        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         let expected_a4_white = vec![bitboard_single('a', 2).unwrap()];
         let expected_e4_white: Vec<u64> = Vec::new();
@@ -206,12 +270,54 @@ pub mod tests {
         let expected_a5_black = vec![bitboard_single('a', 7).unwrap()];
         let expected_d5_black: Vec<u64> = Vec::new();
 
-        assert_eq!(expected_a4_white, detect_pawns_source_for_target_double_move(&board, bitboard_single('a', 4).unwrap(), true));
-        assert_eq!(expected_e4_white, detect_pawns_source_for_target_double_move(&board, bitboard_single('e', 4).unwrap(), true));
-        assert_eq!(expected_g4_white, detect_pawns_source_for_target_double_move(&board, bitboard_single('g', 4).unwrap(), true));
-        assert_eq!(expected_h4_white, detect_pawns_source_for_target_double_move(&board, bitboard_single('h', 4).unwrap(), true));
-        assert_eq!(expected_a5_black, detect_pawns_source_for_target_double_move(&board, bitboard_single('a', 5).unwrap(), false));
-        assert_eq!(expected_d5_black, detect_pawns_source_for_target_double_move(&board, bitboard_single('d', 5).unwrap(), false));
+        assert_eq!(
+            expected_a4_white,
+            detect_pawns_source_for_target_double_move(
+                &board,
+                bitboard_single('a', 4).unwrap(),
+                true
+            )
+        );
+        assert_eq!(
+            expected_e4_white,
+            detect_pawns_source_for_target_double_move(
+                &board,
+                bitboard_single('e', 4).unwrap(),
+                true
+            )
+        );
+        assert_eq!(
+            expected_g4_white,
+            detect_pawns_source_for_target_double_move(
+                &board,
+                bitboard_single('g', 4).unwrap(),
+                true
+            )
+        );
+        assert_eq!(
+            expected_h4_white,
+            detect_pawns_source_for_target_double_move(
+                &board,
+                bitboard_single('h', 4).unwrap(),
+                true
+            )
+        );
+        assert_eq!(
+            expected_a5_black,
+            detect_pawns_source_for_target_double_move(
+                &board,
+                bitboard_single('a', 5).unwrap(),
+                false
+            )
+        );
+        assert_eq!(
+            expected_d5_black,
+            detect_pawns_source_for_target_double_move(
+                &board,
+                bitboard_single('d', 5).unwrap(),
+                false
+            )
+        );
     }
 
     #[test]
@@ -227,7 +333,7 @@ pub mod tests {
             .add_piece('g', 3)
             .build();
 
-        let board = Board::new(white_pawns, black_pawns);
+        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         let expected_white_moves: u64 = PositionBuilder::new()
             .add_piece('d', 4)
@@ -238,8 +344,14 @@ pub mod tests {
             .add_piece('h', 2)
             .build();
 
-        // assert_eq!(expected_white_moves, compute_diagonal_captures_pawns(&board, true));
-        assert_eq!(expected_black_moves, compute_pawns_diagonal_captures(&board, false));
+        assert_eq!(
+            expected_white_moves,
+            compute_pawns_diagonal_captures(&board, true)
+        );
+        assert_eq!(
+            expected_black_moves,
+            compute_pawns_diagonal_captures(&board, false)
+        );
     }
 
     #[test]
@@ -271,19 +383,24 @@ pub mod tests {
             .add_piece('h', 5)
             .build();
 
-        let board = Board::new(white_pawns, black_pawns);
+        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
         render_bitboard(&compute_pawns_double_moves(&board, true), 'm');
 
-        assert_eq!(expected_white_moves, compute_pawns_double_moves(&board, true));
-        assert_eq!(expected_black_moves, compute_pawns_double_moves(&board, false));
+        assert_eq!(
+            expected_white_moves,
+            compute_pawns_double_moves(&board, true)
+        );
+        assert_eq!(
+            expected_black_moves,
+            compute_pawns_double_moves(&board, false)
+        );
     }
-
 
     #[test]
     fn test_pawns_single_moves() {
         let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 2)// blocked
-            .add_piece('b', 8)// can't move
+            .add_piece('a', 2) // blocked
+            .add_piece('b', 8) // can't move
             .add_piece('d', 2)
             .add_piece('e', 3)
             .add_piece('f', 2)
@@ -301,19 +418,21 @@ pub mod tests {
             .add_piece('f', 3)
             .build();
 
-        let expected_black_moves: u64 = PositionBuilder::new()
-            .add_piece('h', 6)
-            .build();
+        let expected_black_moves: u64 = PositionBuilder::new().add_piece('h', 6).build();
 
-        let board = Board::new(white_pawns, black_pawns);
+        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         render_bitboard(&compute_pawns_single_moves(&board, false), 'W');
 
-        assert_eq!(expected_white_moves, compute_pawns_single_moves(&board, true));
-        assert_eq!(expected_black_moves, compute_pawns_single_moves(&board, false));
+        assert_eq!(
+            expected_white_moves,
+            compute_pawns_single_moves(&board, true)
+        );
+        assert_eq!(
+            expected_black_moves,
+            compute_pawns_single_moves(&board, false)
+        );
     }
-
-
 
     #[test]
     fn test_white_pawns_moves() {
@@ -336,7 +455,7 @@ pub mod tests {
             .add_piece('f', 4)
             .build();
 
-        let board = Board::new(white_pawns, black_pawns);
+        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         assert_eq!(expected, compute_pawns_moves(&board, true));
     }
@@ -357,8 +476,15 @@ pub mod tests {
             .add_piece('e', 2)
             .build();
 
-        let board = Board::new(0, black_pawns);
+        let board = Board::new(0, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         assert_eq!(expected, compute_pawns_moves(&board, false));
+    }
+
+    #[test]
+    fn test_precompute_knight_moves() {
+        let white_knights = PositionBuilder::new().add_piece('f', 3).build();
+        let black_knights = PositionBuilder::new().add_piece('a', 8).build();
+        let board = Board::new(0, white_knights, 0, 0, 0, 0, 0, black_knights, 0, 0, 0, 0);
     }
 }
