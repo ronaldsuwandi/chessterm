@@ -14,7 +14,6 @@ pub struct Board {
     // pub black_bishops: u64,
     // pub black_queens: u64,
     // pub black_king: u64,
-
     pub white_pieces: u64,
     pub black_pieces: u64,
     pub occupied: u64,
@@ -77,19 +76,19 @@ impl Board {
                 ]
             };
 
-            for piece in pieces {
-                if (*piece & position) != 0 {
-                    return Some(piece);
-                }
+        for piece in pieces {
+            if (*piece & position) != 0 {
+                return Some(piece);
             }
-            None
+        }
+        None
     }
 
     /// moves the given piece without any checking
     pub fn move_piece(&mut self, from: u64, to: u64, is_white: bool) {
         if let Some(piece) = self.get_piece_at(from, is_white) {
-           *piece = (*piece ^ from) | to;
-           self.update_pieces();;
+            *piece = (*piece ^ from) | to;
+            self.update_pieces();
         }
     }
 
@@ -399,5 +398,112 @@ pub mod tests {
         assert!(!board.is_capture(bitboard_single('a', 2).unwrap(), true));
         assert!(!board.is_capture(bitboard_single('b', 5).unwrap(), true));
         assert!(!board.is_capture(bitboard_single('h', 6).unwrap(), false));
+    }
+
+    #[test]
+    fn test_move_piece() {
+        let white_pawns = PositionBuilder::new()
+            .add_piece('d', 2)
+            .add_piece('e', 2)
+            .build();
+        let black_pawns = PositionBuilder::new().add_piece('f', 7).build();
+
+        let mut board = Board::new(white_pawns, black_pawns);
+
+        board.move_piece(
+            bitboard_single('e', 2).unwrap(),
+            bitboard_single('e', 4).unwrap(),
+            true,
+        );
+
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('d', 2)
+                .add_piece('e', 4)
+                .build(),
+            board.white_pawns
+        );
+        assert_eq!(black_pawns, board.black_pawns);
+
+        // no validation for valid/invalid move
+        board.move_piece(
+            bitboard_single('f', 7).unwrap(),
+            bitboard_single('g', 1).unwrap(),
+            false,
+        );
+        assert_eq!(
+            PositionBuilder::new().add_piece('g', 1).build(),
+            board.black_pawns
+        );
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('d', 2)
+                .add_piece('e', 4)
+                .build(),
+            board.white_pawns
+        );
+    }
+
+    #[test]
+    fn test_remove_piece() {
+        let white_pawns = PositionBuilder::new()
+            .add_piece('d', 2)
+            .add_piece('e', 2)
+            .build();
+        let black_pawns = PositionBuilder::new()
+            .add_piece('f', 7)
+            .build();
+
+        let mut board = Board::new(white_pawns, black_pawns);
+
+        assert_eq!(white_pawns, board.white_pawns);
+        assert_eq!(black_pawns, board.black_pawns);
+
+        // TODO test with other piece too
+
+        board.remove_piece(bitboard_single('e',2).unwrap(), true);
+        board.remove_piece(bitboard_single('d',2).unwrap(), true);
+        assert_eq!(0, board.white_pawns);
+        assert_eq!(black_pawns, board.black_pawns);
+
+        // remove non-existent piece
+        board.remove_piece(bitboard_single('e',2).unwrap(), false);
+        assert_eq!(0, board.white_pawns);
+        assert_eq!(black_pawns, board.black_pawns);
+
+        board.remove_piece(bitboard_single('f',7).unwrap(), true);
+        assert_eq!(0, board.white_pawns);
+        assert_eq!(black_pawns, board.black_pawns);
+
+        // remove correct black piece
+        board.remove_piece(bitboard_single('f',7).unwrap(), false);
+        assert_eq!(0, board.white_pawns);
+        assert_eq!(0, board.black_pawns);
+    }
+
+    #[test]
+    fn test_get_piece_at() {
+        let white_pawns = PositionBuilder::new()
+            .add_piece('d', 2)
+            .add_piece('e', 2)
+            .build();
+        let black_pawns = PositionBuilder::new()
+            .add_piece('f', 7)
+            .add_piece('g', 7)
+            .build();
+
+        let mut board = Board::new(white_pawns, black_pawns);
+
+        let actual_white_piece = *board.get_piece_at(bitboard_single('e', 2).unwrap(), true).unwrap();
+        let actual_black_piece = *board.get_piece_at(bitboard_single('f', 7).unwrap(), false).unwrap();
+        assert_eq!(board.white_pawns, actual_white_piece);
+        assert_eq!(board.black_pawns, actual_black_piece);
+
+        // TODO test with more pieces
+
+
+        assert_eq!(None, board.get_piece_at(bitboard_single('e', 2).unwrap(), false));
+        assert_eq!(None, board.get_piece_at(bitboard_single('f', 7).unwrap(), true));
+        assert_eq!(None, board.get_piece_at(bitboard_single('a', 5).unwrap(), true));
     }
 }
