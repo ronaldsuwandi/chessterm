@@ -81,11 +81,11 @@ impl Board {
     }
 
     pub fn get_piece_at(&mut self, position: u64, is_white: bool) -> Option<&mut u64> {
-        let pieces: [&mut u64; /*6*/ 1] = if is_white {
+        let pieces: [&mut u64; /*6*/ 2] = if is_white {
                 [
                     &mut self.white_pawns,
+                    &mut self.white_knights,
                     // &mut self.white_rooks,
-                    // &mut self.white_knights,
                     // &mut self.white_bishops,
                     // &mut self.white_queens,
                     // &mut self.white_kings,
@@ -93,8 +93,8 @@ impl Board {
             } else {
                 [
                     &mut self.black_pawns,
+                    &mut self.black_knights,
                     // &mut self.black_rooks,
-                    // &mut self.black_knights,
                     // &mut self.black_bishops,
                     // &mut self.black_queens,
                     // &mut self.black_kings,
@@ -181,9 +181,26 @@ impl Board {
 impl Default for Board {
     fn default() -> Board {
         let white_pawns = 0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_00000000;
+        let white_knights =
+            0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01000010;
         let black_pawns = 0b00000000_11111111_00000000_00000000_00000000_00000000_00000000_00000000;
+        let black_knights =
+            0b01000010_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
 
-        Self::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0)
+        Self::new(
+            white_pawns,
+            white_knights,
+            0,
+            0,
+            0,
+            0,
+            black_pawns,
+            black_knights,
+            0,
+            0,
+            0,
+            0,
+        )
     }
 }
 

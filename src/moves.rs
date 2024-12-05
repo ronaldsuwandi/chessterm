@@ -71,21 +71,110 @@ fn compute_pawns_diagonal_captures(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
-fn precompute_knight_moves() -> [u64; 64] {
-    let mut knight_moves = [0u64; 64];
-    for square in 0..64 {
-        let bitboard = 1u64 << square;
-        // use mask to avoid wrap around
-        knight_moves[square] = ((bitboard << 17) & !MASK_FILE_A) // UP 2 + LEFT 1
-            | ((bitboard << 15) & !MASK_FILE_H) // UP 2 + RIGHT 1
-            | ((bitboard << 10) & !(MASK_FILE_A | MASK_FILE_B)) // UP 1 + RIGHT 2
-            | ((bitboard << 6) & !(MASK_FILE_G | MASK_FILE_H)) // UP 1 + LEFT 2
-            | ((bitboard >> 17) & !MASK_FILE_H) // DOWN 2 + RIGHT 1
-            | ((bitboard >> 15) & !MASK_FILE_A) // DOWN 2 + LEFT 1
-            | ((bitboard >> 10) & !(MASK_FILE_G | MASK_FILE_H)) // DOWN 1 + LEFT 2
-            | ((bitboard >> 6) & !(MASK_FILE_A | MASK_FILE_B)); // DOWN 1 + RIGHT 2
+pub const KNIGHT_MOVES: [u64; 64] = [
+    precompute_knight_moves(0),
+    precompute_knight_moves(1),
+    precompute_knight_moves(2),
+    precompute_knight_moves(3),
+    precompute_knight_moves(4),
+    precompute_knight_moves(5),
+    precompute_knight_moves(6),
+    precompute_knight_moves(7),
+    precompute_knight_moves(8),
+    precompute_knight_moves(9),
+    precompute_knight_moves(10),
+    precompute_knight_moves(11),
+    precompute_knight_moves(12),
+    precompute_knight_moves(13),
+    precompute_knight_moves(14),
+    precompute_knight_moves(15),
+    precompute_knight_moves(16),
+    precompute_knight_moves(17),
+    precompute_knight_moves(18),
+    precompute_knight_moves(19),
+    precompute_knight_moves(20),
+    precompute_knight_moves(21),
+    precompute_knight_moves(22),
+    precompute_knight_moves(23),
+    precompute_knight_moves(24),
+    precompute_knight_moves(25),
+    precompute_knight_moves(26),
+    precompute_knight_moves(27),
+    precompute_knight_moves(28),
+    precompute_knight_moves(29),
+    precompute_knight_moves(30),
+    precompute_knight_moves(31),
+    precompute_knight_moves(32),
+    precompute_knight_moves(33),
+    precompute_knight_moves(34),
+    precompute_knight_moves(35),
+    precompute_knight_moves(36),
+    precompute_knight_moves(37),
+    precompute_knight_moves(38),
+    precompute_knight_moves(39),
+    precompute_knight_moves(40),
+    precompute_knight_moves(41),
+    precompute_knight_moves(42),
+    precompute_knight_moves(43),
+    precompute_knight_moves(44),
+    precompute_knight_moves(45),
+    precompute_knight_moves(46),
+    precompute_knight_moves(47),
+    precompute_knight_moves(48),
+    precompute_knight_moves(49),
+    precompute_knight_moves(50),
+    precompute_knight_moves(51),
+    precompute_knight_moves(52),
+    precompute_knight_moves(53),
+    precompute_knight_moves(54),
+    precompute_knight_moves(55),
+    precompute_knight_moves(56),
+    precompute_knight_moves(57),
+    precompute_knight_moves(58),
+    precompute_knight_moves(59),
+    precompute_knight_moves(60),
+    precompute_knight_moves(61),
+    precompute_knight_moves(62),
+    precompute_knight_moves(63),
+];
+
+// precompute all the moves available for knights at each bit index in the bitboard
+const fn precompute_knight_moves(index: u8) -> u64 {
+    let bitboard = 1u64 << index;
+    // use mask to avoid wrap around
+    ((bitboard << 17) & !MASK_FILE_A) // UP 2 + LEFT 1
+    | ((bitboard << 15) & !MASK_FILE_H) // UP 2 + RIGHT 1
+    | ((bitboard << 10) & !(MASK_FILE_A | MASK_FILE_B)) // UP 1 + RIGHT 2
+    | ((bitboard << 6) & !(MASK_FILE_G | MASK_FILE_H)) // UP 1 + LEFT 2
+    | ((bitboard >> 17) & !MASK_FILE_H) // DOWN 2 + RIGHT 1
+    | ((bitboard >> 15) & !MASK_FILE_A) // DOWN 2 + LEFT 1
+    | ((bitboard >> 10) & !(MASK_FILE_G | MASK_FILE_H)) // DOWN 1 + LEFT 2
+    | ((bitboard >> 6) & !(MASK_FILE_A | MASK_FILE_B)) // DOWN 1 + RIGHT 2
+}
+
+pub fn compute_knights_moves(board: &Board, is_white: bool) -> u64 {
+    let mut moves = 0u64;
+    let occupied: u64;
+    let mut knights: u64;
+    if is_white {
+        knights = board.white_knights;
+        occupied = board.white_pieces;
+    } else {
+        knights = board.black_knights;
+        occupied = board.black_pieces;
+    };
+
+    while knights != 0 {
+        let index = knights.trailing_zeros();
+
+        // Add the knight's precomputed moves, excluding occupied by own
+        moves |= KNIGHT_MOVES[index as usize] & !occupied;
+
+        // Remove the processed knight (use lsb approach)
+        knights &= knights - 1;
     }
-    knight_moves
+
+    moves
 }
 
 // REVERSE ENGINEER MOVES
@@ -183,6 +272,7 @@ fn detect_pawns_source_for_target_double_move(
 pub mod tests {
     use super::*;
     use crate::board::{bit_pos, bitboard_single, render_bitboard, Board, PositionBuilder};
+    use crossterm::queue;
     #[test]
     fn test_detect_pawn_source_for_target_single_move() {
         let white_pawns: u64 = PositionBuilder::new()
@@ -483,8 +573,94 @@ pub mod tests {
 
     #[test]
     fn test_precompute_knight_moves() {
-        let white_knights = PositionBuilder::new().add_piece('f', 3).build();
-        let black_knights = PositionBuilder::new().add_piece('a', 8).build();
-        let board = Board::new(0, white_knights, 0, 0, 0, 0, 0, black_knights, 0, 0, 0, 0);
+        let expected_knights_normal_f3: u64 = PositionBuilder::new()
+            .add_piece('e', 5)
+            .add_piece('g', 5)
+            .add_piece('d', 4)
+            .add_piece('h', 4)
+            .add_piece('d', 2)
+            .add_piece('h', 2)
+            .add_piece('e', 1)
+            .add_piece('g', 1)
+            .build();
+
+        let expected_knights_edge_a8: u64 = PositionBuilder::new()
+            .add_piece('c', 7)
+            .add_piece('b', 6)
+            .build();
+
+        assert_eq!(
+            expected_knights_normal_f3,
+            precompute_knight_moves(bit_pos('f', 3).unwrap() as u8)
+        );
+        assert_eq!(
+            expected_knights_edge_a8,
+            precompute_knight_moves(bit_pos('a', 8).unwrap() as u8)
+        );
+    }
+
+    #[test]
+    fn test_compute_knights_moves() {
+        let white_pawns = PositionBuilder::new()
+            .add_piece('a', 2)
+            .add_piece('b', 5)
+            .build();
+
+        let white_knights = PositionBuilder::new().add_piece('c', 3).build();
+
+        let black_pawns = PositionBuilder::new()
+            .add_piece('d', 5)
+            .add_piece('f', 6)
+            .add_piece('g', 6)
+            .build();
+
+        let black_knights = PositionBuilder::new()
+            .add_piece('e', 4)
+            .add_piece('h',8)
+            .build();
+
+        let board = Board::new(
+            white_pawns,
+            white_knights,
+            0,
+            0,
+            0,
+            0,
+            black_pawns,
+            black_knights,
+            0,
+            0,
+            0,
+            0,
+        );
+
+        // should be blocked on a2 and b5
+        let expected_white_knights_moves = PositionBuilder::new()
+            .add_piece('a', 4)
+            .add_piece('b', 1)
+            .add_piece('e', 2)
+            .add_piece('e', 4) // can capture e4
+            .add_piece('d', 1)
+            .add_piece('d', 5) // can capture d5
+            .build();
+
+        // should be blocked on f6 (for e4 knight) and g6 (for h8 knight)
+        let expected_black_knights_moves = PositionBuilder::new()
+            // for e4 knight
+            .add_piece('c', 5)
+            .add_piece('d', 6)
+            .add_piece('c', 3)// can capture c3
+            .add_piece('d', 2)
+            .add_piece('f', 2)
+            .add_piece('g', 3)
+            .add_piece('g', 5)
+            // for h8 knight
+            .add_piece('f', 7)
+            .build();
+
+        board.render();
+
+        assert_eq!(expected_white_knights_moves, compute_knights_moves(&board, true));
+        assert_eq!(expected_black_knights_moves, compute_knights_moves(&board, false));
     }
 }

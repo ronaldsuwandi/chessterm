@@ -83,11 +83,11 @@ fn main() {
 
     render_bitboard(&game.board.black_pawns, 'b');
 
-    println!("CAPTURE F5");
-    println!("{}", game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap(), true));
+    // println!("CAPTURE F5");
+    // println!("{}", game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap(), true));
     game.board.render();
-
-
-    println!("black2");
-    render_bitboard(&game.board.black_pawns, 'b');
+    game.move_knight(bitboard_single('g',8).unwrap(), bitboard_single('f',6).unwrap(), false);
+    game.board.render();
+    // println!("black2");
+    // render_bitboard(&game.board.black_pawns, 'b');
 }
