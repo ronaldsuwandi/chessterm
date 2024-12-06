@@ -88,6 +88,20 @@ fn main() {
     game.board.render();
     game.move_knight(bitboard_single('g',8).unwrap(), bitboard_single('f',6).unwrap(), false);
     game.board.render();
+
+    // invalid rook move
+    game.move_rook(bitboard_single('a',1).unwrap(), bitboard_single('b',1).unwrap(), true);
+    game.board.render();
+
+    game.move_pawn(bitboard_single('b',7).unwrap(), bitboard_single('b',5).unwrap(), false);
+    game.move_pawn(bitboard_single('a',2).unwrap(), bitboard_single('a',4).unwrap(), true);
+    game.board.render();
+    game.move_pawn(bitboard_single('b',5).unwrap(), bitboard_single('a',4).unwrap(), false);
+    game.board.render();
+    game.move_rook(bitboard_single('a',1).unwrap(), bitboard_single('a',4).unwrap(), true);
+    game.board.render();
+
+
     // println!("black2");
     // render_bitboard(&game.board.black_pawns, 'b');
 }

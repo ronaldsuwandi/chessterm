@@ -1,5 +1,5 @@
 use crate::board::{render_bitboard, Board};
-use crate::moves::{compute_knights_moves, compute_pawns_moves};
+use crate::moves::{compute_knights_moves, compute_pawns_moves, compute_rooks_moves};
 
 /// Game struct responsible for all game logics (pin, check, valid captures, etc)
 pub struct Game {
@@ -10,6 +10,40 @@ impl Game {
     pub fn new(board: Board) -> Game {
         Game {
             board,
+        }
+    }
+
+    pub fn move_rook(&mut self, from: u64, to: u64, is_white: bool) -> bool {
+        let pseudolegal_rook_moves = compute_rooks_moves(&self.board, is_white);
+        let is_capture = self.board.is_capture(to, is_white);
+        let rooks = if is_white {
+            self.board.white_rooks
+        } else {
+            self.board.black_rooks
+        };
+
+        // from is valid (from current rooks)
+        if (from & rooks) == 0 {
+            println!("NO");
+            return false;
+        }
+        // check pseudolegal moves
+        if (to & pseudolegal_rook_moves) == 0 {
+            println!("NO2");
+            return false;
+        }
+
+        if is_capture {
+            self.board.move_piece(from, to, is_white);
+            self.board.remove_piece(to, !is_white);
+
+            // TODO check for check
+            true
+        } else {
+            // Normal move
+            // TODO check for pin
+            self.board.move_piece(from, to, is_white);
+            true
         }
     }
 
@@ -100,4 +134,5 @@ pub mod tests {
     use super::*;
 
 
+    // test for move_pieces
 }
