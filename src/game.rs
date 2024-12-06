@@ -70,8 +70,8 @@ impl Game {
         }
 
         // TODO check for actual legal moves
-
         if is_capture {
+            // TODO check this must be diagonal move
             self.board.move_piece(from, to, is_white);
             self.board.remove_piece(to, !is_white);
 
@@ -98,4 +98,6 @@ impl Default for Game {
 pub mod tests {
     use crate::board::{bit_pos, bitboard_single, render_bitboard, Board, PositionBuilder};
     use super::*;
+
+
 }

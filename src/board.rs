@@ -50,6 +50,7 @@ impl Board {
             white_bishops,
             white_queens,
             white_king,
+
             black_pawns,
             black_knights,
             black_rooks,
