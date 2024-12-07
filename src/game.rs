@@ -1,19 +1,63 @@
 use crate::board::{render_bitboard, Board};
-use crate::moves::{compute_knights_moves, compute_pawns_moves, compute_rooks_moves};
+use crate::moves::{compute_bishops_moves, compute_knights_moves, compute_pawns_moves, compute_rooks_moves};
 
 /// Game struct responsible for all game logics (pin, check, valid captures, etc)
 pub struct Game {
     pub board: Board,
+    pub turn: u8,
 }
 
 impl Game {
     pub fn new(board: Board) -> Game {
         Game {
             board,
+            turn: 1,
         }
     }
 
-    pub fn move_rook(&mut self, from: u64, to: u64, is_white: bool) -> bool {
+    fn is_white(&self) -> bool {
+        self.turn % 2 == 1
+    }
+
+    pub fn move_bishop(&mut self, from: u64, to: u64) -> bool {
+        let is_white = self.is_white();
+        let pseudolegal_bishop_moves = compute_bishops_moves(&self.board, is_white);
+        let is_capture = self.board.is_capture(to, is_white);
+        let bishops = if is_white {
+            self.board.white_bishops
+        } else {
+            self.board.black_bishops
+        };
+
+        // from is valid (from current rooks)
+        if (from & bishops) == 0 {
+            println!("NO");
+            return false;
+        }
+        // check pseudolegal moves
+        if (to & pseudolegal_bishop_moves) == 0 {
+            println!("NO2");
+            return false;
+        }
+
+        if is_capture {
+            self.board.move_piece(from, to, is_white);
+            self.board.remove_piece(to, !is_white);
+
+            // TODO check for check
+            self.turn += 1;
+            true
+        } else {
+            // Normal move
+            // TODO check for pin
+            self.board.move_piece(from, to, is_white);
+            self.turn += 1;
+            true
+        }
+    }
+
+    pub fn move_rook(&mut self, from: u64, to: u64) -> bool {
+        let is_white = self.is_white();
         let pseudolegal_rook_moves = compute_rooks_moves(&self.board, is_white);
         let is_capture = self.board.is_capture(to, is_white);
         let rooks = if is_white {
@@ -38,16 +82,19 @@ impl Game {
             self.board.remove_piece(to, !is_white);
 
             // TODO check for check
+            self.turn += 1;
             true
         } else {
             // Normal move
             // TODO check for pin
             self.board.move_piece(from, to, is_white);
+            self.turn += 1;
             true
         }
     }
 
-    pub fn move_knight(&mut self, from: u64, to: u64, is_white: bool) -> bool {
+    pub fn move_knight(&mut self, from: u64, to: u64) -> bool {
+        let is_white = self.is_white();
         let pseudolegal_knight_moves = compute_knights_moves(&self.board, is_white);
         let is_capture = self.board.is_capture(to, is_white);
         let knights = if is_white {
@@ -72,16 +119,19 @@ impl Game {
             self.board.remove_piece(to, !is_white);
 
             // TODO check for check
+            self.turn += 1;
             true
         } else {
             // Normal move
             // TODO check for pin
             self.board.move_piece(from, to, is_white);
+            self.turn += 1;
             true
         }
     }
 
-    pub fn move_pawn(&mut self, from: u64, to: u64, is_white: bool) -> bool {
+    pub fn move_pawn(&mut self, from: u64, to: u64) -> bool {
+        let is_white = self.is_white();
         let pseudolegal_pawn_moves = compute_pawns_moves(&self.board, is_white);
         let is_capture = self.board.is_capture(to, is_white);
 
@@ -110,11 +160,13 @@ impl Game {
             self.board.remove_piece(to, !is_white);
 
             // TODO check for check
+            self.turn += 1;
             true
         } else {
             // Normal move
             // TODO check for pin
             self.board.move_piece(from, to, is_white);
+            self.turn += 1;
             true
         }
     }

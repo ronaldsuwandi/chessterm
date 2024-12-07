@@ -74,32 +74,38 @@ fn main() {
 
     let mut game = Game::default();
     game.board.render();
-    game.move_pawn(bitboard_single('e',2).unwrap(), bitboard_single('e',4).unwrap(), true);
-    // board.move_pawn(bitboard_single('e',1).unwrap(), bitboard_single('e',3).unwrap(), true); // ignored
+    game.move_pawn(bitboard_single('e',2).unwrap(), bitboard_single('e',4).unwrap());
     game.board.render();
-    game.move_pawn(bitboard_single('f',7).unwrap(), bitboard_single('f',5).unwrap(), false);
+    game.move_pawn(bitboard_single('f',7).unwrap(), bitboard_single('f',5).unwrap());
     game.board.render();
-    println!("black");
-
-    render_bitboard(&game.board.black_pawns, 'b');
-
-    // println!("CAPTURE F5");
-    // println!("{}", game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap(), true));
+    game.move_pawn(bitboard_single('d',2).unwrap(), bitboard_single('d',3).unwrap());
     game.board.render();
-    game.move_knight(bitboard_single('g',8).unwrap(), bitboard_single('f',6).unwrap(), false);
+    game.move_knight(bitboard_single('g',8).unwrap(), bitboard_single('f',6).unwrap());
     game.board.render();
-
-    // invalid rook move
-    game.move_rook(bitboard_single('a',1).unwrap(), bitboard_single('b',1).unwrap(), true);
+    game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap());
     game.board.render();
-
-    game.move_pawn(bitboard_single('b',7).unwrap(), bitboard_single('b',5).unwrap(), false);
-    game.move_pawn(bitboard_single('a',2).unwrap(), bitboard_single('a',4).unwrap(), true);
+    // move black c8->c7 bishop (invalid)
+    game.move_pawn(bitboard_single('c',8).unwrap(), bitboard_single('c',7).unwrap());
     game.board.render();
-    game.move_pawn(bitboard_single('b',5).unwrap(), bitboard_single('a',4).unwrap(), false);
+    game.move_pawn(bitboard_single('c',7).unwrap(), bitboard_single('c',5).unwrap());
     game.board.render();
-    game.move_rook(bitboard_single('a',1).unwrap(), bitboard_single('a',4).unwrap(), true);
+    game.move_bishop(bitboard_single('f',1).unwrap(), bitboard_single('e',2).unwrap());
     game.board.render();
+    // // println!("CAPTURE F5");
+    // // println!("{}", game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap(), true));
+    // game.board.render();
+    //
+    // // invalid rook move
+    // game.move_rook(bitboard_single('a',1).unwrap(), bitboard_single('b',1).unwrap());
+    // game.board.render();
+    //
+    // game.move_pawn(bitboard_single('b',7).unwrap(), bitboard_single('b',5).unwrap());
+    // game.move_pawn(bitboard_single('a',2).unwrap(), bitboard_single('a',4).unwrap());
+    // game.board.render();
+    // game.move_pawn(bitboard_single('b',5).unwrap(), bitboard_single('a',4).unwrap());
+    // game.board.render();
+    // game.move_rook(bitboard_single('a',1).unwrap(), bitboard_single('a',4).unwrap());
+    // game.board.render();
 
 
     // println!("black2");

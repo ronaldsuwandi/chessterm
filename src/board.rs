@@ -82,12 +82,12 @@ impl Board {
     }
 
     pub fn get_piece_at(&mut self, position: u64, is_white: bool) -> Option<&mut u64> {
-        let pieces: [&mut u64; /*6*/ 3] = if is_white {
+        let pieces: [&mut u64; /*6*/ 4] = if is_white {
                 [
                     &mut self.white_pawns,
                     &mut self.white_knights,
                     &mut self.white_rooks,
-                    // &mut self.white_bishops,
+                    &mut self.white_bishops,
                     // &mut self.white_queens,
                     // &mut self.white_kings,
                 ]
@@ -96,7 +96,7 @@ impl Board {
                     &mut self.black_pawns,
                     &mut self.black_knights,
                     &mut self.black_rooks,
-                    // &mut self.black_bishops,
+                    &mut self.black_bishops,
                     // &mut self.black_queens,
                     // &mut self.black_kings,
                 ]
@@ -126,6 +126,7 @@ impl Board {
         }
     }
 
+    // Temporary helper function to render the chess board in terminal
     pub fn render(&self) {
         let mut board_representation = [[' '; 8]; 8];
         // Combine all pieces into a single representation
@@ -186,23 +187,27 @@ impl Default for Board {
             0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01000010;
         let white_rooks =
             0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_10000001;
+        let white_bishops =
+            0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00100100;
         let black_pawns = 0b00000000_11111111_00000000_00000000_00000000_00000000_00000000_00000000;
         let black_knights =
             0b01000010_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
         let black_rooks =
             0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
+        let black_bishops =
+            0b00100100_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
 
         Self::new(
             white_pawns,
             white_knights,
             white_rooks,
-            0,
+            white_bishops,
             0,
             0,
             black_pawns,
             black_knights,
             black_rooks,
-            0,
+            black_bishops,
             0,
             0,
         )

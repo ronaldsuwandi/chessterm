@@ -196,10 +196,10 @@ fn precompute_rook_rays(index: u8) -> [u64; 4] {
     for f in (file + 1)..8 {
         right |= 1u64 << (rank * 8 + f);
     }
-    for r in (0..rank) {
+    for r in 0..rank {
         bottom |= 1u64 << (r * 8 + file);
     }
-    for f in (0..file) {
+    for f in 0..file {
         left |= 1u64 << (rank * 8 + f);
     }
 
@@ -209,19 +209,15 @@ fn precompute_rook_rays(index: u8) -> [u64; 4] {
 pub fn compute_rooks_moves(board: &Board, is_white: bool) -> u64 {
     let mut moves = 0u64;
     let own_pieces: u64;
-    let opponents: u64;
     let mut rooks: u64;
     let occupied = board.occupied;
     if is_white {
         rooks = board.white_rooks;
         own_pieces = board.white_pieces;
-        opponents = board.black_pieces;
     } else {
         rooks = board.black_rooks;
         own_pieces = board.black_pieces;
-        opponents = board.white_pieces;
     };
-
 
     while rooks != 0 {
         let index = rooks.trailing_zeros();
@@ -327,6 +323,80 @@ fn precompute_bishop_rays(index: u8) -> [u64; 4] {
     }
 
     [top_right, bottom_right, bottom_left, top_left]
+}
+
+pub fn compute_bishops_moves(board: &Board, is_white: bool) -> u64 {
+    let mut moves = 0u64;
+    let own_pieces: u64;
+    let mut bishops: u64;
+    let occupied = board.occupied;
+    if is_white {
+        bishops = board.white_bishops;
+        own_pieces = board.white_pieces;
+    } else {
+        bishops = board.black_bishops;
+        own_pieces = board.black_pieces;
+    };
+
+    println!("bishops={bishops}");
+    while bishops != 0 {
+        let index = bishops.trailing_zeros();
+        println!("!!!!! >>> ");
+        let rays = precompute_bishop_rays(index as u8);
+
+        for dir in 0..4 {
+            let ray = rays[dir];
+            let blockers: u64 = ray & occupied;
+            if blockers == 0 {
+                // not occupied, add the whole move
+                moves |= ray
+            } else {
+                let blocked_idx: u32;
+                let blocked_bit: u64;
+
+
+                if dir == 0 || dir == 3 {
+                    // top_right and top_left ray, we find the index using trailing zeros position
+                    blocked_idx = blockers.trailing_zeros();
+                } else {
+                    // for bottom_right and bottom_left, we find the index using leading ones position
+                    // 63 minus X is required because we are shifting to the left
+                    blocked_idx = 63 - blockers.leading_zeros();
+                }
+
+                println!("direction={dir} - blocked idx={blocked_idx}");
+
+                blocked_bit = 1 << blocked_idx;
+                render_bitboard(&blocked_bit, '!');
+                if blocked_bit & own_pieces == 0 {
+                    // opponent piece, we can move here
+                    moves |= blocked_bit;
+                }
+
+
+                // for top_right      do ray & !(u64::MAX << blocked_idx) CONFIRM (exclusive)
+                // for bottom_right   do ray & (u64::MAX << blocked_idx + 1) CONFIRM (exclusive)
+                // for bottom_left    do ray & (u64::MAX << blocked_idx + 1)
+                // for top_left       do ray & !(u64::MAX << blocked_idx) CONFIRM (exclusive)
+
+                if dir == 0 || dir == 3 {
+                    // top_right and top_left
+                    // moves |= ray & !blocked_bitboard;
+                    moves |= ray & !(u64::MAX << blocked_idx);
+
+                } else {
+                    // bottom_right and bottom_left
+                    moves |= ray & (u64::MAX << blocked_idx + 1);
+                }
+            }
+        }
+
+
+        // Remove the processed rooks (use lsb approach)
+        bishops &= bishops - 1;
+    }
+
+    moves
 }
 
 
@@ -939,7 +1009,6 @@ pub mod tests {
             .add_piece('h', 1)
             .build();
 
-        let white = compute_rooks_moves(&board, false);
         assert_eq!(expected_white_rooks_moves, compute_rooks_moves(&board, true));
         assert_eq!(expected_black_rooks_moves, compute_rooks_moves(&board, false));
     }
@@ -947,23 +1016,22 @@ pub mod tests {
     // TODO remove the belo test later
 
     #[test]
-    fn test_top() {
+    fn test_top_right() {
         let rook = PositionBuilder::new()
-            .add_piece('e', 3)
+            .add_piece('d', 4)
             .build();
 
         let blocked = PositionBuilder::new()
-            .add_piece('e', 7)
+            .add_piece('f', 6)
             .build();
 
-        let blocked_idx = bit_pos('e',7).unwrap();
+        let blocked_idx = bit_pos('f',6).unwrap();
 
         let ray = PositionBuilder::new()
-            .add_piece('e', 4)
             .add_piece('e', 5)
-            .add_piece('e', 6)
-            .add_piece('e', 7)
-            .add_piece('e', 8)
+            .add_piece('f', 6)
+            .add_piece('g', 7)
+            .add_piece('h', 8)
             .build();
 
         render_bitboard(&rook, 'R');
@@ -982,22 +1050,21 @@ pub mod tests {
     }
 
     #[test]
-    fn test_left() {
+    fn test_bottom_right() {
         let rook = PositionBuilder::new()
-            .add_piece('e', 3)
+            .add_piece('d', 4)
             .build();
 
         let blocked = PositionBuilder::new()
-            .add_piece('b', 3)
+            .add_piece('f', 2)
             .build();
 
-        let blocked_idx = bit_pos('b',3).unwrap();
+        let blocked_idx = bit_pos('f',2).unwrap();
 
         let ray = PositionBuilder::new()
-            .add_piece('d', 3)
-            .add_piece('c', 3)
-            .add_piece('b', 3)
-            .add_piece('a', 3)
+            .add_piece('e', 3)
+            .add_piece('f', 2)
+            .add_piece('g', 1)
             .build();
 
         render_bitboard(&rook, 'R');
@@ -1019,21 +1086,21 @@ pub mod tests {
     }
 
     #[test]
-    fn test_bottom() {
+    fn test_bottom_left() {
         let rook = PositionBuilder::new()
-            .add_piece('e', 4)
+            .add_piece('d', 4)
             .build();
 
         let blocked = PositionBuilder::new()
-            .add_piece('e', 2)
+            .add_piece('b', 2)
             .build();
 
-        let blocked_idx = bit_pos('e',2).unwrap();
+        let blocked_idx = bit_pos('b',2).unwrap();
 
         let ray = PositionBuilder::new()
-            .add_piece('e', 3)
-            .add_piece('e', 2)
-            .add_piece('e', 1)
+            .add_piece('c', 3)
+            .add_piece('b', 2)
+            .add_piece('a', 1)
             .build();
 
         render_bitboard(&rook, 'R');
@@ -1053,21 +1120,21 @@ pub mod tests {
 
 
     #[test]
-    fn test_right() {
+    fn test_top_left() {
         let rook = PositionBuilder::new()
-            .add_piece('e', 4)
+            .add_piece('d', 4)
             .build();
 
         let blocked = PositionBuilder::new()
-            .add_piece('g', 4)
+            .add_piece('b', 6)
             .build();
 
-        let blocked_idx = bit_pos('g',4).unwrap();
+        let blocked_idx = bit_pos('b',6).unwrap();
 
         let ray = PositionBuilder::new()
-            .add_piece('f', 4)
-            .add_piece('g', 4)
-            .add_piece('h', 4)
+            .add_piece('c', 5)
+            .add_piece('b', 6)
+            .add_piece('a', 7)
             .build();
 
         render_bitboard(&rook, 'R');
@@ -1115,8 +1182,113 @@ pub mod tests {
             .build();
 
         assert_eq!([expected_top_right_moves, expected_bottom_right_moves, expected_bottom_left_moves, expected_top_left_moves], precompute_bishop_rays(bit_pos('e', 4).unwrap() as u8));
-
     }
+
+    #[test]
+    fn test_compute_bishops_moves() {
+        let white_pawns = PositionBuilder::new()
+            .add_piece('a', 2)
+            .add_piece('c', 2)
+            .add_piece('e', 2)
+            .add_piece('g', 2)
+            .build();
+
+        let white_knights = PositionBuilder::new()
+            .add_piece('c', 6)
+            .build();
+
+        let white_bishops = PositionBuilder::new()
+            // .add_piece('a',1)
+            .add_piece('e', 4)
+            .build();
+
+        let black_pawns = PositionBuilder::new()
+            // .add_piece('e', 5)
+            .add_piece('e', 8)
+            .add_piece('f', 6)
+            .add_piece('g', 6)
+            .build();
+
+        let black_bishops = PositionBuilder::new()
+            .add_piece('a', 8)
+            .add_piece('h', 8)
+            .build();
+
+        let board = Board::new(
+            white_pawns,
+            white_knights,
+            0,
+            white_bishops,
+            0,
+            0,
+            black_pawns,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+
+        let expected_white_rooks_moves = PositionBuilder::new()
+            // a1 rook
+            .add_piece('b', 1)
+            .add_piece('c', 1)
+            .add_piece('d', 1)
+
+            // e4 rook
+            .add_piece('e', 5)
+            .add_piece('e', 6)
+            .add_piece('e', 7)
+            // e8 can be captured
+            .add_piece('e', 8)
+            // bottom only up to e3 (e2 blocked)
+            .add_piece('e', 3)
+            .add_piece('c', 4)
+            .add_piece('d', 4)
+            .add_piece('f', 4)
+            .add_piece('g', 4)
+            .add_piece('h', 4)
+            .build();
+
+        let expected_black_rooks_moves = PositionBuilder::new()
+            // a8 rook
+            .add_piece('a', 7)
+            .add_piece('a', 6)
+            .add_piece('a', 5)
+            .add_piece('a', 4)
+            .add_piece('a', 3)
+            // a2 can be captured
+            .add_piece('a', 2)
+            .add_piece('b', 8)
+            .add_piece('c', 8)
+            // e8 is blocked
+            .add_piece('d', 8)
+
+            // h8 rook
+            .add_piece('f', 8)
+            .add_piece('g', 8)
+            .add_piece('h', 7)
+            .add_piece('h', 6)
+            .add_piece('h', 5)
+            .add_piece('h', 4)
+            .add_piece('h', 3)
+            .add_piece('h', 2)
+            .add_piece('h', 1)
+            .build();
+
+        let white = compute_bishops_moves(&board, true);
+        board.render();
+        render_bitboard(&white,'b');
+
+        // render_bitboard(&precompute_bishop_rays(bit_pos('a',1).unwrap() as u8)[0], '0');
+        // render_bitboard(&precompute_bishop_rays(bit_pos('a',1).unwrap() as u8)[1], '1');
+        // render_bitboard(&precompute_bishop_rays(bit_pos('a',1).unwrap() as u8)[2], '2');
+        // render_bitboard(&precompute_bishop_rays(bit_pos('a',1).unwrap() as u8)[3], '3');
+        // render_bitboard(&precompute_bishop_rays(bit_pos('a',1).unwrap())[0], 'c');
+        // assert_eq!(expected_white_rooks_moves, compute_rooks_moves(&board, true));
+        // assert_eq!(expected_black_rooks_moves, compute_rooks_moves(&board, false));
+    }
+
 }
 
 // for top    do ray & !(u64::MAX << blocked_idx) CONFIRM (exclusive)
