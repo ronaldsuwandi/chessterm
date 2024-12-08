@@ -2,7 +2,7 @@ use crate::board::{
     is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H,
     MASK_RANK_2, MASK_RANK_7,
 };
-
+use crate::{precompute_moves, precompute_rays};
 // move generation related, only generate pseudolegal moves
 
 // PAWNS
@@ -71,72 +71,7 @@ fn compute_pawns_diagonal_captures(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
-pub const KNIGHT_MOVES: [u64; 64] = [
-    precompute_knight_moves(0),
-    precompute_knight_moves(1),
-    precompute_knight_moves(2),
-    precompute_knight_moves(3),
-    precompute_knight_moves(4),
-    precompute_knight_moves(5),
-    precompute_knight_moves(6),
-    precompute_knight_moves(7),
-    precompute_knight_moves(8),
-    precompute_knight_moves(9),
-    precompute_knight_moves(10),
-    precompute_knight_moves(11),
-    precompute_knight_moves(12),
-    precompute_knight_moves(13),
-    precompute_knight_moves(14),
-    precompute_knight_moves(15),
-    precompute_knight_moves(16),
-    precompute_knight_moves(17),
-    precompute_knight_moves(18),
-    precompute_knight_moves(19),
-    precompute_knight_moves(20),
-    precompute_knight_moves(21),
-    precompute_knight_moves(22),
-    precompute_knight_moves(23),
-    precompute_knight_moves(24),
-    precompute_knight_moves(25),
-    precompute_knight_moves(26),
-    precompute_knight_moves(27),
-    precompute_knight_moves(28),
-    precompute_knight_moves(29),
-    precompute_knight_moves(30),
-    precompute_knight_moves(31),
-    precompute_knight_moves(32),
-    precompute_knight_moves(33),
-    precompute_knight_moves(34),
-    precompute_knight_moves(35),
-    precompute_knight_moves(36),
-    precompute_knight_moves(37),
-    precompute_knight_moves(38),
-    precompute_knight_moves(39),
-    precompute_knight_moves(40),
-    precompute_knight_moves(41),
-    precompute_knight_moves(42),
-    precompute_knight_moves(43),
-    precompute_knight_moves(44),
-    precompute_knight_moves(45),
-    precompute_knight_moves(46),
-    precompute_knight_moves(47),
-    precompute_knight_moves(48),
-    precompute_knight_moves(49),
-    precompute_knight_moves(50),
-    precompute_knight_moves(51),
-    precompute_knight_moves(52),
-    precompute_knight_moves(53),
-    precompute_knight_moves(54),
-    precompute_knight_moves(55),
-    precompute_knight_moves(56),
-    precompute_knight_moves(57),
-    precompute_knight_moves(58),
-    precompute_knight_moves(59),
-    precompute_knight_moves(60),
-    precompute_knight_moves(61),
-    precompute_knight_moves(62),
-    precompute_knight_moves(63),
-];
+pub const KNIGHT_MOVES: [u64; 64] = precompute_moves!(precompute_knight_moves);
 
 // precompute all the moves available for knights at each bit index in the bitboard
 const fn precompute_knight_moves(index: u8) -> u64 {
@@ -177,30 +112,43 @@ pub fn compute_knights_moves(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
-// TODO use macro to store in const
+pub const ROOK_RAYS: [[u64; 4]; 64] = precompute_rays!(4, precompute_rook_rays);
 // clockwise direction
-fn precompute_rook_rays(index: u8) -> [u64; 4] {
+const fn precompute_rook_rays(index: u8) -> [u64; 4] {
     let mut top: u64 = 0;
     let mut right: u64 = 0;
     let mut bottom: u64 = 0;
     let mut left: u64 = 0;
-    let bitboard = 1u64 << index;
 
     let file = index % 8;
     let rank = index / 8;
-    println!("file={} rank={}", file, rank);
+    // println!("file={} rank={}", file, rank);
 
-    for r in (rank + 1)..8 {
+    let mut r: u8 = 0;
+    let mut f: u8 = 0;
+
+    r = rank + 1;
+    while r < 8 {
         top |= 1u64 << (r * 8 + file);
+        r += 1;
     }
-    for f in (file + 1)..8 {
+
+    f = file + 1;
+    while f < 8 {
         right |= 1u64 << (rank * 8 + f);
+        f += 1;
     }
-    for r in 0..rank {
+
+    r = 0;
+    while r < rank {
         bottom |= 1u64 << (r * 8 + file);
+        r += 1;
     }
-    for f in 0..file {
+
+    f = 0;
+    while f < file {
         left |= 1u64 << (rank * 8 + f);
+        f += 1;
     }
 
     [top, right, bottom, left]
@@ -221,7 +169,8 @@ pub fn compute_rooks_moves(board: &Board, is_white: bool) -> u64 {
 
     while rooks != 0 {
         let index = rooks.trailing_zeros();
-        let rays = precompute_rook_rays(index as u8);
+        // let rays = precompute_rook_rays(index as u8);
+        let rays = ROOK_RAYS[index as usize];
 
         for dir in 0..4 {
             let ray = rays[dir];
@@ -276,7 +225,9 @@ pub fn compute_rooks_moves(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
-fn precompute_bishop_rays(index: u8) -> [u64; 4] {
+pub const BISHOP_RAYS: [[u64; 4]; 64] = precompute_rays!(4, precompute_bishop_rays);
+
+const fn precompute_bishop_rays(index: u8) -> [u64; 4] {
     let mut top_right: u64 = 0;
     let mut bottom_right: u64 = 0;
     let mut bottom_left: u64 = 0;
@@ -284,7 +235,7 @@ fn precompute_bishop_rays(index: u8) -> [u64; 4] {
 
     let file = index % 8;
     let rank = index / 8;
-    println!("file={} rank={}", file, rank);
+    // println!("file={} rank={}", file, rank);
 
 
     let mut f = file;
@@ -342,7 +293,7 @@ pub fn compute_bishops_moves(board: &Board, is_white: bool) -> u64 {
     while bishops != 0 {
         let index = bishops.trailing_zeros();
         println!("!!!!! >>> ");
-        let rays = precompute_bishop_rays(index as u8);
+        let rays = BISHOP_RAYS[index as usize];
 
         for dir in 0..4 {
             let ray = rays[dir];

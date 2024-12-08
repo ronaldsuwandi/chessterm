@@ -56,6 +56,7 @@ use crate::game::Game;
 mod board;
 mod moves;
 mod game;
+mod macros;
 
 fn main() {
     // draw_chessboard().unwrap();
