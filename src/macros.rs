@@ -9,11 +9,7 @@ macro_rules! precompute_moves {
         }
         moves
     }};
-}
 
-
-#[macro_export]
-macro_rules! precompute_rays {
     ($size: expr, $func: ident) => {{
         let mut rays = [[0u64; $size]; 64];
         let mut i = 0;

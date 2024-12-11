@@ -2,7 +2,7 @@ use crate::board::{
     is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H,
     MASK_RANK_2, MASK_RANK_7,
 };
-use crate::{precompute_moves, precompute_rays};
+use crate::precompute_moves;
 // move generation related, only generate pseudolegal moves
 
 // PAWNS
@@ -112,7 +112,7 @@ pub fn compute_knights_moves(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
-pub const ROOK_RAYS: [[u64; 4]; 64] = precompute_rays!(4, precompute_rook_rays);
+pub const ROOK_RAYS: [[u64; 4]; 64] = precompute_moves!(4, precompute_rook_rays);
 // clockwise direction
 const fn precompute_rook_rays(index: u8) -> [u64; 4] {
     let mut top: u64 = 0;
@@ -183,8 +183,8 @@ pub fn compute_rooks_moves(board: &Board, is_white: bool) -> u64 {
                 let blocked_bit: u64;
 
                 if dir == 0 || dir == 1 {
-                   // for top/right ray, we find the index using trailing zeros position
-                   blocked_idx = blockers.trailing_zeros();
+                    // for top/right ray, we find the index using trailing zeros position
+                    blocked_idx = blockers.trailing_zeros();
                 } else {
                     // for bottom/left ray, we find the index using leading ones position
                     // 63 minus X is required because we are shifting to the left
@@ -199,7 +199,6 @@ pub fn compute_rooks_moves(board: &Board, is_white: bool) -> u64 {
                     moves |= blocked_bit;
                 }
 
-
                 // for top    do ray & !(u64::MAX << blocked_idx) CONFIRM (exclusive)
                 // for left   do ray &  (u64::MAX << blocked_idx + 1) CONFIRM (exclusive)
                 // for bottom do ray &  (u64::MAX << blocked_idx + 1) CONFIRM (exclusive)
@@ -209,14 +208,12 @@ pub fn compute_rooks_moves(board: &Board, is_white: bool) -> u64 {
                     // top/right
                     // moves |= ray & !blocked_bitboard;
                     moves |= ray & !(u64::MAX << blocked_idx);
-
                 } else {
                     // bottom/left
                     moves |= ray & (u64::MAX << blocked_idx + 1);
                 }
             }
         }
-
 
         // Remove the processed rooks (use lsb approach)
         rooks &= rooks - 1;
@@ -225,7 +222,7 @@ pub fn compute_rooks_moves(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
-pub const BISHOP_RAYS: [[u64; 4]; 64] = precompute_rays!(4, precompute_bishop_rays);
+pub const BISHOP_RAYS: [[u64; 4]; 64] = precompute_moves!(4, precompute_bishop_rays);
 
 const fn precompute_bishop_rays(index: u8) -> [u64; 4] {
     let mut top_right: u64 = 0;
@@ -236,7 +233,6 @@ const fn precompute_bishop_rays(index: u8) -> [u64; 4] {
     let file = index % 8;
     let rank = index / 8;
     // println!("file={} rank={}", file, rank);
-
 
     let mut f = file;
     let mut r = rank;
@@ -305,7 +301,6 @@ pub fn compute_bishops_moves(board: &Board, is_white: bool) -> u64 {
                 let blocked_idx: u32;
                 let blocked_bit: u64;
 
-
                 if dir == 0 || dir == 3 {
                     // top_right and top_left ray, we find the index using trailing zeros position
                     blocked_idx = blockers.trailing_zeros();
@@ -324,7 +319,6 @@ pub fn compute_bishops_moves(board: &Board, is_white: bool) -> u64 {
                     moves |= blocked_bit;
                 }
 
-
                 // for top_right      do ray & !(u64::MAX << blocked_idx) CONFIRM (exclusive)
                 // for bottom_right   do ray & (u64::MAX << blocked_idx + 1) CONFIRM (exclusive)
                 // for bottom_left    do ray & (u64::MAX << blocked_idx + 1)
@@ -334,14 +328,12 @@ pub fn compute_bishops_moves(board: &Board, is_white: bool) -> u64 {
                     // top_right and top_left
                     // moves |= ray & !blocked_bitboard;
                     moves |= ray & !(u64::MAX << blocked_idx);
-
                 } else {
                     // bottom_right and bottom_left
                     moves |= ray & (u64::MAX << blocked_idx + 1);
                 }
             }
         }
-
 
         // Remove the processed rooks (use lsb approach)
         bishops &= bishops - 1;
@@ -350,6 +342,20 @@ pub fn compute_bishops_moves(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
+pub const QUEEN_RAYS: [[u64; 8]; 64] = precompute_moves!(8, precompute_queen_rays);
+// clockwise direction
+const fn precompute_queen_rays(index: u8) -> [u64; 8] {
+    let rook_rays = ROOK_RAYS[index as usize];
+    let bishop_rays = BISHOP_RAYS[index as usize];
+    let mut rays: [u64; 8] = [0; 8];
+    let mut i: usize = 0;
+    while i < 4 {
+        rays[i * 2] = rook_rays[i];
+        rays[i * 2 + 1] = bishop_rays[i];
+        i += 1;
+    }
+    rays
+}
 
 // REVERSE ENGINEER MOVES
 pub fn detect_pawns_source_for_target(board: &Board, target: u64, is_white: bool) -> Vec<u64> {
@@ -790,7 +796,7 @@ pub mod tests {
 
         let black_knights = PositionBuilder::new()
             .add_piece('e', 4)
-            .add_piece('h',8)
+            .add_piece('h', 8)
             .build();
 
         let board = Board::new(
@@ -823,7 +829,7 @@ pub mod tests {
             // for e4 knight
             .add_piece('c', 5)
             .add_piece('d', 6)
-            .add_piece('c', 3)// can capture c3
+            .add_piece('c', 3) // can capture c3
             .add_piece('d', 2)
             .add_piece('f', 2)
             .add_piece('g', 3)
@@ -834,13 +840,19 @@ pub mod tests {
 
         board.render();
 
-        assert_eq!(expected_white_knights_moves, compute_knights_moves(&board, true));
-        assert_eq!(expected_black_knights_moves, compute_knights_moves(&board, false));
+        assert_eq!(
+            expected_white_knights_moves,
+            compute_knights_moves(&board, true)
+        );
+        assert_eq!(
+            expected_black_knights_moves,
+            compute_knights_moves(&board, false)
+        );
     }
 
     #[test]
     fn test_precompute_rook_rays() {
-        let rays = precompute_rook_rays(bit_pos('e',4).unwrap() as u8);
+        let rays = precompute_rook_rays(bit_pos('e', 4).unwrap() as u8);
 
         let expected_top_moves = PositionBuilder::new()
             .add_piece('e', 5)
@@ -865,7 +877,15 @@ pub mod tests {
             .add_piece('a', 4)
             .build();
 
-        assert_eq!([expected_top_moves, expected_right_moves, expected_bottom_moves, expected_left_moves], precompute_rook_rays(bit_pos('e',4).unwrap() as u8));
+        assert_eq!(
+            [
+                expected_top_moves,
+                expected_right_moves,
+                expected_bottom_moves,
+                expected_left_moves
+            ],
+            precompute_rook_rays(bit_pos('e', 4).unwrap() as u8)
+        );
     }
 
     #[test]
@@ -875,12 +895,10 @@ pub mod tests {
             .add_piece('b', 4)
             .add_piece('e', 2)
             .build();
-        let white_knights = PositionBuilder::new()
-            .add_piece('e', 1)
-            .build();
+        let white_knights = PositionBuilder::new().add_piece('e', 1).build();
 
         let white_rooks = PositionBuilder::new()
-            .add_piece('a',1)
+            .add_piece('a', 1)
             .add_piece('e', 4)
             .build();
 
@@ -918,7 +936,6 @@ pub mod tests {
             .add_piece('b', 1)
             .add_piece('c', 1)
             .add_piece('d', 1)
-
             // e4 rook
             .add_piece('e', 5)
             .add_piece('e', 6)
@@ -947,7 +964,6 @@ pub mod tests {
             .add_piece('c', 8)
             // e8 is blocked
             .add_piece('d', 8)
-
             // h8 rook
             .add_piece('f', 8)
             .add_piece('g', 8)
@@ -960,23 +976,25 @@ pub mod tests {
             .add_piece('h', 1)
             .build();
 
-        assert_eq!(expected_white_rooks_moves, compute_rooks_moves(&board, true));
-        assert_eq!(expected_black_rooks_moves, compute_rooks_moves(&board, false));
+        assert_eq!(
+            expected_white_rooks_moves,
+            compute_rooks_moves(&board, true)
+        );
+        assert_eq!(
+            expected_black_rooks_moves,
+            compute_rooks_moves(&board, false)
+        );
     }
 
     // TODO remove the belo test later
 
     #[test]
     fn test_top_right() {
-        let rook = PositionBuilder::new()
-            .add_piece('d', 4)
-            .build();
+        let rook = PositionBuilder::new().add_piece('d', 4).build();
 
-        let blocked = PositionBuilder::new()
-            .add_piece('f', 6)
-            .build();
+        let blocked = PositionBuilder::new().add_piece('f', 6).build();
 
-        let blocked_idx = bit_pos('f',6).unwrap();
+        let blocked_idx = bit_pos('f', 6).unwrap();
 
         let ray = PositionBuilder::new()
             .add_piece('e', 5)
@@ -996,21 +1014,15 @@ pub mod tests {
         render_bitboard(&!blocked_ray, '~');
         println!("AVAILABLE");
         render_bitboard(&(ray & !blocked_ray), '+');
-
-
     }
 
     #[test]
     fn test_bottom_right() {
-        let rook = PositionBuilder::new()
-            .add_piece('d', 4)
-            .build();
+        let rook = PositionBuilder::new().add_piece('d', 4).build();
 
-        let blocked = PositionBuilder::new()
-            .add_piece('f', 2)
-            .build();
+        let blocked = PositionBuilder::new().add_piece('f', 2).build();
 
-        let blocked_idx = bit_pos('f',2).unwrap();
+        let blocked_idx = bit_pos('f', 2).unwrap();
 
         let ray = PositionBuilder::new()
             .add_piece('e', 3)
@@ -1030,23 +1042,17 @@ pub mod tests {
         println!("AVAILABLE");
         render_bitboard(&(ray & blocked_ray), '+');
 
-
-
         // for bottom do ray &  (u64::MAX << blocked_idx) CONFIRM (inclusive block)
         // for right  do ray & !(u64::MAX << blocked_idx + 1) CONFIRM
     }
 
     #[test]
     fn test_bottom_left() {
-        let rook = PositionBuilder::new()
-            .add_piece('d', 4)
-            .build();
+        let rook = PositionBuilder::new().add_piece('d', 4).build();
 
-        let blocked = PositionBuilder::new()
-            .add_piece('b', 2)
-            .build();
+        let blocked = PositionBuilder::new().add_piece('b', 2).build();
 
-        let blocked_idx = bit_pos('b',2).unwrap();
+        let blocked_idx = bit_pos('b', 2).unwrap();
 
         let ray = PositionBuilder::new()
             .add_piece('c', 3)
@@ -1069,18 +1075,13 @@ pub mod tests {
         // for right  do ray & !(u64::MAX << blocked_idx + 1) CONFIRM
     }
 
-
     #[test]
     fn test_top_left() {
-        let rook = PositionBuilder::new()
-            .add_piece('d', 4)
-            .build();
+        let rook = PositionBuilder::new().add_piece('d', 4).build();
 
-        let blocked = PositionBuilder::new()
-            .add_piece('b', 6)
-            .build();
+        let blocked = PositionBuilder::new().add_piece('b', 6).build();
 
-        let blocked_idx = bit_pos('b',6).unwrap();
+        let blocked_idx = bit_pos('b', 6).unwrap();
 
         let ray = PositionBuilder::new()
             .add_piece('c', 5)
@@ -1099,7 +1100,6 @@ pub mod tests {
         render_bitboard(&!blocked_ray, '~');
         println!("AVAILABLE");
         render_bitboard(&(ray & !blocked_ray), '+');
-
     }
 
     #[test]
@@ -1132,7 +1132,15 @@ pub mod tests {
             .add_piece('a', 8)
             .build();
 
-        assert_eq!([expected_top_right_moves, expected_bottom_right_moves, expected_bottom_left_moves, expected_top_left_moves], precompute_bishop_rays(bit_pos('e', 4).unwrap() as u8));
+        assert_eq!(
+            [
+                expected_top_right_moves,
+                expected_bottom_right_moves,
+                expected_bottom_left_moves,
+                expected_top_left_moves
+            ],
+            precompute_bishop_rays(bit_pos('e', 4).unwrap() as u8)
+        );
     }
 
     #[test]
@@ -1144,9 +1152,7 @@ pub mod tests {
             .add_piece('g', 2)
             .build();
 
-        let white_knights = PositionBuilder::new()
-            .add_piece('c', 6)
-            .build();
+        let white_knights = PositionBuilder::new().add_piece('c', 6).build();
 
         let white_bishops = PositionBuilder::new()
             // .add_piece('a',1)
@@ -1185,7 +1191,6 @@ pub mod tests {
             .add_piece('b', 1)
             .add_piece('c', 1)
             .add_piece('d', 1)
-
             // e4 rook
             .add_piece('e', 5)
             .add_piece('e', 6)
@@ -1214,7 +1219,6 @@ pub mod tests {
             .add_piece('c', 8)
             // e8 is blocked
             .add_piece('d', 8)
-
             // h8 rook
             .add_piece('f', 8)
             .add_piece('g', 8)
@@ -1229,8 +1233,9 @@ pub mod tests {
 
         let white = compute_bishops_moves(&board, true);
         board.render();
-        render_bitboard(&white,'b');
+        render_bitboard(&white, 'b');
 
+        // FIXME
         // render_bitboard(&precompute_bishop_rays(bit_pos('a',1).unwrap() as u8)[0], '0');
         // render_bitboard(&precompute_bishop_rays(bit_pos('a',1).unwrap() as u8)[1], '1');
         // render_bitboard(&precompute_bishop_rays(bit_pos('a',1).unwrap() as u8)[2], '2');
@@ -1240,6 +1245,76 @@ pub mod tests {
         // assert_eq!(expected_black_rooks_moves, compute_rooks_moves(&board, false));
     }
 
+    #[test]
+    fn test_precompute_queen_rays() {
+        let rays = precompute_queen_rays(bit_pos('e', 4).unwrap() as u8);
+        render_bitboard(&rays[0], '^');
+        render_bitboard(&rays[1], '⬈');
+        render_bitboard(&rays[2], '>');
+        render_bitboard(&rays[3], '⬊');
+        render_bitboard(&rays[4], 'v');
+        render_bitboard(&rays[5], '⬋');
+        render_bitboard(&rays[6], '<');
+        render_bitboard(&rays[7], '⬉');
+
+        let expected_top_moves = PositionBuilder::new()
+            .add_piece('e', 5)
+            .add_piece('e', 6)
+            .add_piece('e', 7)
+            .add_piece('e', 8)
+            .build();
+        let expected_top_right_moves = PositionBuilder::new()
+            .add_piece('f', 5)
+            .add_piece('g', 6)
+            .add_piece('h', 7)
+            .build();
+        let expected_right_moves = PositionBuilder::new()
+            .add_piece('f', 4)
+            .add_piece('g', 4)
+            .add_piece('h', 4)
+            .build();
+        let expected_bottom_right_moves = PositionBuilder::new()
+            .add_piece('f', 3)
+            .add_piece('g', 2)
+            .add_piece('h', 1)
+            .build();
+        let expected_bottom_moves = PositionBuilder::new()
+            .add_piece('e', 3)
+            .add_piece('e', 2)
+            .add_piece('e', 1)
+            .build();
+        let expected_bottom_left_moves = PositionBuilder::new()
+            .add_piece('d', 3)
+            .add_piece('c', 2)
+            .add_piece('b', 1)
+            .build();
+        let expected_left_moves = PositionBuilder::new()
+            .add_piece('d', 4)
+            .add_piece('c', 4)
+            .add_piece('b', 4)
+            .add_piece('a', 4)
+            .build();
+        let expected_top_left_moves = PositionBuilder::new()
+            .add_piece('d', 5)
+            .add_piece('c', 6)
+            .add_piece('b', 7)
+            .add_piece('a', 8)
+            .build();
+
+        assert_eq!(
+            [
+                expected_top_moves,
+                expected_top_right_moves,
+                expected_right_moves,
+                expected_bottom_right_moves,
+                expected_bottom_moves,
+                expected_bottom_left_moves,
+                expected_left_moves,
+                expected_top_left_moves
+            ],
+            precompute_queen_rays(bit_pos('e', 4).unwrap() as u8)
+        );
+    }
 }
 
 // for top    do ray & !(u64::MAX << blocked_idx) CONFIRM (exclusive)
