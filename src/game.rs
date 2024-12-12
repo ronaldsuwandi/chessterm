@@ -1,4 +1,4 @@
-use crate::board::{render_bitboard, Board};
+use crate::board::Board;
 use crate::moves::{compute_bishops_moves, compute_knights_moves, compute_pawns_moves, compute_rooks_moves};
 
 /// Game struct responsible for all game logics (pin, check, valid captures, etc)
@@ -34,18 +34,18 @@ impl Game {
         let pseudolegal_moves = compute_moves(&self.board, is_white);
         let is_capture = self.board.is_capture(to, is_white);
 
-        if (from == to) {
-            println!("From and to same");
+        if from == to {
+            println!("Invalid from and to square");
             return false;
         }
         // from is valid (from current rooks)
         if (from & pieces) == 0 {
-            println!("NO");
+            println!("Invalid from square");
             return false;
         }
         // check pseudolegal moves
         if (to & pseudolegal_moves) == 0 {
-            println!("NO2");
+            println!("Invalid target square");
             return false;
         }
 
@@ -113,6 +113,7 @@ impl Game {
         };
 
         // TODO add additional capture rule for pawn (must be diagonal)
+        // TODO promotion
         self.move_piece(from, to, pawns, is_white, compute_pawns_moves, None)
     }
 }
@@ -127,8 +128,6 @@ impl Default for Game {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::board::{bit_pos, bitboard_single, render_bitboard, Board, PositionBuilder};
-    use super::*;
 
 
     // test for move_pieces

@@ -50,7 +50,7 @@
 //     Ok(())
 // }
 
-use crate::board::{bitboard_single, render_bitboard, Board};
+use crate::board::bitboard_single;
 use crate::game::Game;
 
 mod board;
