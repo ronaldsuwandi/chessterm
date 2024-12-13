@@ -116,8 +116,16 @@ impl Game {
         // TODO promotion
         self.move_piece(from, to, pawns, is_white, compute_pawns_moves, None)
     }
-}
 
+    pub fn process_move(&mut self, cmd: &str) -> bool{
+
+        true
+    }
+
+
+    // TODO implement parse move and game logic for check and pin
+    // fn parse_move(&self, cmd: &str)
+}
 
 impl Default for Game {
     fn default() -> Game {
@@ -131,4 +139,7 @@ pub mod tests {
 
 
     // test for move_pieces
+
+    // #[test]
+    // fn test_process_move()
 }

@@ -1,9 +1,6 @@
-use crate::board::{
-    is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H,
-    MASK_RANK_2, MASK_RANK_7,
-};
+use crate::board::{bitboard_single, is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H, MASK_RANK_2, MASK_RANK_7};
 use crate::precompute_moves;
-// move generation related, only generate pseudolegal moves
+// move generation related, only generate pseudo-legal moves
 
 // PAWNS
 pub fn compute_pawns_moves(board: &Board, is_white: bool) -> u64 {
@@ -444,13 +441,36 @@ pub fn compute_king_moves(board: &Board, is_white: bool) -> u64 {
         }
     }
 
-
     // find the current own_pieces that blocked by the king moves
     let own_pieces_blocked_moves = moves & own_pieces;
     // xor with own piece to remove blocked pieces for kings moves
     moves ^= own_pieces_blocked_moves;
     moves
 }
+
+pub fn detect_pawn_source(board: &Board, source_file: char, target_rank: u64, to: u64, is_capture: bool, is_white: bool) -> u64 {
+    // determine from
+    if is_white {
+        if is_capture {
+            // find the target rank, move 1 step backward
+            let rank = target_rank - 1;
+            bitboard_single(source_file, rank).unwrap() & board.white_pawns
+        } else {
+            // figure out from either 1 step or 2 steps backwards
+            to >> 8 & board.white_pawns | to >> 16 & board.white_pawns
+        }
+    } else {
+        if is_capture {
+            // find the target rank, move 1 step backward
+            let rank = target_rank + 1;
+            bitboard_single(source_file, rank).unwrap() & board.black_pawns
+        } else {
+            // figure out from either 1 step or 2 steps backwards
+            to << 8 & board.black_pawns | to << 16 & board.black_pawns
+        }
+    }
+}
+
 
 // REVERSE ENGINEER MOVES
 pub fn detect_pawns_source_for_target(board: &Board, target: u64, is_white: bool) -> Vec<u64> {
@@ -1261,9 +1281,7 @@ pub mod tests {
             .add_piece('h', 8)
             .build();
 
-        let black_queens = PositionBuilder::new()
-            .add_piece('h', 5)
-            .build();
+        let black_queens = PositionBuilder::new().add_piece('h', 5).build();
 
         let board = Board::new(
             white_pawns,
@@ -1340,8 +1358,14 @@ pub mod tests {
             // top left
             .build();
 
-        assert_eq!(expected_white_queen_moves, compute_queens_moves(&board, true));
-        assert_eq!(expected_black_queen_moves, compute_queens_moves(&board, false));
+        assert_eq!(
+            expected_white_queen_moves,
+            compute_queens_moves(&board, true)
+        );
+        assert_eq!(
+            expected_black_queen_moves,
+            compute_queens_moves(&board, false)
+        );
     }
 
     #[test]
@@ -1371,12 +1395,8 @@ pub mod tests {
             .add_piece('h', 8)
             .build();
 
-        let black_queens = PositionBuilder::new()
-            .add_piece('h', 5)
-            .build();
-        let black_king = PositionBuilder::new()
-            .add_piece('h', 6)
-            .build();
+        let black_queens = PositionBuilder::new().add_piece('h', 5).build();
+        let black_king = PositionBuilder::new().add_piece('h', 6).build();
 
         let board = Board::new(
             white_pawns,

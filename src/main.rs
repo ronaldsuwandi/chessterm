@@ -57,6 +57,7 @@ mod board;
 mod moves;
 mod game;
 mod macros;
+mod parser;
 
 fn main() {
     // draw_chessboard().unwrap();
