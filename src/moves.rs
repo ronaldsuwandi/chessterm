@@ -448,7 +448,7 @@ pub fn compute_king_moves(board: &Board, is_white: bool) -> u64 {
     moves
 }
 
-pub fn detect_pawn_source(board: &Board, source_file: char, target_rank: u64, to: u64, is_capture: bool, is_white: bool) -> u64 {
+pub fn resolve_pawn_source(board: &Board, source_file: char, target_rank: u64, to: u64, is_capture: bool, is_white: bool) -> u64 {
     // determine from
     if is_white {
         if is_capture {

@@ -1,6 +1,6 @@
-use crate::board::{bit_pos, bitboard_single, render_bitboard, Board};
+use crate::board::{bit_pos, bitboard_single, is_rank, render_bitboard, Board};
+use crate::moves::resolve_pawn_source;
 use std::str::Chars;
-use crate::moves::detect_pawn_source;
 
 #[derive(Debug, PartialEq)]
 pub enum Piece {
@@ -59,15 +59,7 @@ pub fn parse_move(board: &Board, cmd: &str, is_white: bool) -> Result<Move, Pars
 
         Piece::Knight | Piece::Rook | Piece::Bishop | Piece::Queen | Piece::King => {}
 
-        Piece::Castling => {
-            if cmd.eq("O-O") {
-                special_move = Some(SpecialMove::CastlingKing);
-            } else if cmd.eq("O-O-O") {
-                special_move = Some(SpecialMove::CastlingQueen);
-            } else {
-                return Err(ParseError::InvalidCastling);
-            }
-        }
+        Piece::Castling => return parse_castling(board, cmd, is_white),
     }
     Ok(Move {
         piece,
@@ -79,7 +71,42 @@ pub fn parse_move(board: &Board, cmd: &str, is_white: bool) -> Result<Move, Pars
     })
 }
 
-fn parse_pawn(board: &Board, source: char, mut chars: Chars, is_white: bool) -> Result<Move, ParseError> {
+fn parse_castling(board: &Board, cmd: &str, is_white: bool) -> Result<Move, ParseError> {
+    let mut special_move: Option<SpecialMove>;
+    if cmd.eq("O-O") {
+        special_move = Some(SpecialMove::CastlingKing);
+    } else if cmd.eq("O-O-O") {
+        special_move = Some(SpecialMove::CastlingQueen);
+    } else {
+        return Err(ParseError::InvalidCastling);
+    }
+
+    let valid_king_position: bool;
+    if is_white {
+        valid_king_position = board.white_king & bitboard_single('e', 1).unwrap() != 0;
+    } else {
+        valid_king_position = board.black_king & bitboard_single('e', 8).unwrap() != 0;
+    }
+    if !valid_king_position {
+        return Err(ParseError::InvalidCastling);
+    }
+
+    Ok(Move {
+        piece: Piece::Castling,
+        from: 0,
+        to: 0,
+        is_capture: false,
+        is_white,
+        special_move,
+    })
+}
+
+fn parse_pawn(
+    board: &Board,
+    source: char,
+    mut chars: Chars,
+    is_white: bool,
+) -> Result<Move, ParseError> {
     let mut is_capture = false;
     let mut from: u64 = 0;
     let mut to: u64 = 0;
@@ -100,65 +127,51 @@ fn parse_pawn(board: &Board, source: char, mut chars: Chars, is_white: bool) -> 
 
     while let Some(c) = chars.next() {
         match state {
-            PawnParserState::Initial => {
-                match c {
-                    rank @ '0'..='8' => {
-                        target_rank = rank.to_digit(10).unwrap() as u64;
-                        to = bitboard_single(source, target_rank).unwrap();
-                        state = PawnParserState::TargetParsed;
-                        can_promote = if is_white {
-                            rank == '8'
-                        } else {
-                            rank == '1'
-                        } ;
-                    }
-                    'x' => {
-                        state = PawnParserState::Capturing;
-                        is_capture = true;
-                    }
-                    _ => {
-                        return Err(ParseError::InvalidTarget);
-                    }
+            PawnParserState::Initial => match c {
+                rank @ '0'..='8' => {
+                    target_rank = rank.to_digit(10).unwrap() as u64;
+                    to = bitboard_single(source, target_rank).unwrap();
+                    state = PawnParserState::TargetParsed;
+                    can_promote = if is_white { rank == '8' } else { rank == '1' };
                 }
-            }
-            PawnParserState::Capturing => {
-                match c {
-                    file @ 'a'..='h' => {
-                        if let Some(c) = chars.next() {
-                            match c {
-                                rank @ '0'..='8' => {
-                                    target_rank = rank.to_digit(10).unwrap() as u64;
-                                    to = bitboard_single(file, target_rank).unwrap();
-                                    state = PawnParserState::TargetParsed;
-                                    can_promote = if is_white {
-                                        rank == '8'
-                                    } else {
-                                        rank == '1'
-                                    } ;
-                                }
-                                _ => {
-                                    return Err(ParseError::InvalidTarget);
-                                }
+                'x' => {
+                    state = PawnParserState::Capturing;
+                    is_capture = true;
+                }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
+                }
+            },
+            PawnParserState::Capturing => match c {
+                file @ 'a'..='h' => {
+                    if let Some(c) = chars.next() {
+                        match c {
+                            rank @ '0'..='8' => {
+                                target_rank = rank.to_digit(10).unwrap() as u64;
+                                to = bitboard_single(file, target_rank).unwrap();
+                                state = PawnParserState::TargetParsed;
+                                can_promote = if is_white { rank == '8' } else { rank == '1' };
                             }
-                        } else {
-                            return Err(ParseError::InvalidTarget);
+                            _ => {
+                                return Err(ParseError::InvalidTarget);
+                            }
                         }
-                    }
-                    _ => {
+                    } else {
                         return Err(ParseError::InvalidTarget);
                     }
                 }
-            }
-            PawnParserState::TargetParsed => {
-                match c {
-                    '=' if can_promote => {
-                        state = PawnParserState::PromotionPiece;
-                    }
-                    _ => {
-                        return Err(ParseError::InvalidTarget);
-                    }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
                 }
-            }
+            },
+            PawnParserState::TargetParsed => match c {
+                '=' if can_promote => {
+                    state = PawnParserState::PromotionPiece;
+                }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
+                }
+            },
             PawnParserState::PromotionPiece => {
                 let promotion = match c {
                     'N' => Piece::Knight,
@@ -176,7 +189,7 @@ fn parse_pawn(board: &Board, source: char, mut chars: Chars, is_white: bool) -> 
     }
 
     render_bitboard(&to, 'p');
-    from = detect_pawn_source(board, source, target_rank, to, is_capture, is_white);
+    from = resolve_pawn_source(board, source, target_rank, to, is_capture, is_white);
 
     render_bitboard(&from, 'f');
 
@@ -188,7 +201,7 @@ fn parse_pawn(board: &Board, source: char, mut chars: Chars, is_white: bool) -> 
         return Err(ParseError::InvalidTarget);
     }
     if state == PawnParserState::PromotionPiece && special_move == None {
-         return Err(ParseError::InvalidTarget);
+        return Err(ParseError::InvalidTarget);
     }
 
     Ok(Move {
@@ -216,8 +229,8 @@ fn parse_source(c: char) -> Result<Piece, ParseError> {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::board::PositionBuilder;
     use super::*;
+    use crate::board::PositionBuilder;
 
     #[test]
     fn test_parse_move() {
@@ -228,7 +241,7 @@ pub mod tests {
     fn test_parse_pawn_basic_moves() {
         let board = Board::default();
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('e', 2).unwrap(),
                 to: bitboard_single('e', 4).unwrap(),
@@ -240,7 +253,7 @@ pub mod tests {
         );
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('f', 2).unwrap(),
                 to: bitboard_single('f', 3).unwrap(),
@@ -252,7 +265,7 @@ pub mod tests {
         );
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('e', 7).unwrap(),
                 to: bitboard_single('e', 5).unwrap(),
@@ -264,7 +277,7 @@ pub mod tests {
         );
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('h', 7).unwrap(),
                 to: bitboard_single('h', 6).unwrap(),
@@ -309,7 +322,7 @@ pub mod tests {
         let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('e', 3).unwrap(),
                 to: bitboard_single('d', 4).unwrap(),
@@ -326,7 +339,7 @@ pub mod tests {
         );
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('g', 3).unwrap(),
                 to: bitboard_single('h', 2).unwrap(),
@@ -360,11 +373,23 @@ pub mod tests {
             .add_piece('b', 8)
             .add_piece('g', 8)
             .build();
-        let board = Board::new(white_pawns, white_knights, 0, 0, 0, 0, black_pawns, black_knights, 0, 0, 0, 0);
-        board.render();
+        let board = Board::new(
+            white_pawns,
+            white_knights,
+            0,
+            0,
+            0,
+            0,
+            black_pawns,
+            black_knights,
+            0,
+            0,
+            0,
+            0,
+        );
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('h', 7).unwrap(),
                 to: bitboard_single('g', 8).unwrap(),
@@ -376,7 +401,7 @@ pub mod tests {
         );
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('d', 2).unwrap(),
                 to: bitboard_single('d', 1).unwrap(),
@@ -388,7 +413,7 @@ pub mod tests {
         );
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('d', 2).unwrap(),
                 to: bitboard_single('d', 1).unwrap(),
@@ -400,7 +425,7 @@ pub mod tests {
         );
 
         assert_eq!(
-            Move{
+            Move {
                 piece: Piece::Pawn,
                 from: bitboard_single('d', 2).unwrap(),
                 to: bitboard_single('d', 1).unwrap(),
@@ -428,6 +453,107 @@ pub mod tests {
         );
     }
 
+    #[test]
+    fn test_parse_castling() {
+        let white_rooks: u64 = PositionBuilder::new()
+            .add_piece('a', 1)
+            .add_piece('h', 1)
+            .build();
+        let white_king: u64 = PositionBuilder::new().add_piece('e', 1).build();
+        let black_rooks: u64 = PositionBuilder::new()
+            .add_piece('a', 8)
+            .add_piece('h', 8)
+            .build();
+        let black_king: u64 = PositionBuilder::new().add_piece('e', 8).build();
+        let board = Board::new(
+            0,
+            0,
+            white_rooks,
+            0,
+            0,
+            white_king,
+            0,
+            0,
+            black_rooks,
+            0,
+            0,
+            black_king,
+        );
+
+        assert_eq!(
+            Move {
+                piece: Piece::Castling,
+                from: 0,
+                to: 0,
+                is_capture: false,
+                is_white: true,
+                special_move: Some(SpecialMove::CastlingKing),
+            },
+            parse_move(&board, "O-O", true).unwrap()
+        );
+        assert_eq!(
+            Move {
+                piece: Piece::Castling,
+                from: 0,
+                to: 0,
+                is_capture: false,
+                is_white: false,
+                special_move: Some(SpecialMove::CastlingKing),
+            },
+            parse_move(&board, "O-O", false).unwrap()
+        );
+        assert_eq!(
+            Move {
+                piece: Piece::Castling,
+                from: 0,
+                to: 0,
+                is_capture: false,
+                is_white: true,
+                special_move: Some(SpecialMove::CastlingQueen),
+            },
+            parse_move(&board, "O-O-O", true).unwrap()
+        );
+        assert_eq!(
+            Move {
+                piece: Piece::Castling,
+                from: 0,
+                to: 0,
+                is_capture: false,
+                is_white: false,
+                special_move: Some(SpecialMove::CastlingQueen),
+            },
+            parse_move(&board, "O-O-O", false).unwrap()
+        );
+        assert_eq!(
+            Err(ParseError::InvalidCastling),
+            parse_move(&board, "O-", true)
+        );
+
+        let white_rooks: u64 = PositionBuilder::new()
+            .add_piece('a', 1)
+            .add_piece('h', 1)
+            .build();
+        let white_king: u64 = PositionBuilder::new().add_piece('g', 2).build();
+        let board = Board::new(
+            0,
+            0,
+            white_rooks,
+            0,
+            0,
+            white_king,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+
+        assert_eq!(
+            Err(ParseError::InvalidCastling),
+            parse_move(&board, "O-O", true)
+        );
+    }
 
     #[test]
     fn test_parse_source() {
