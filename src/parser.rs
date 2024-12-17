@@ -29,49 +29,192 @@ pub enum SpecialMove {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Move {
+pub struct ParsedMove {
     pub piece: Piece,
-    pub from: u64,
+    /// from file and rank is optional (e.g. Nf3)
+    pub from_file: Option<char>,
+    pub from_rank: Option<u64>,
     pub to: u64,
     pub is_capture: bool,
-    pub is_white: bool,
     pub special_move: Option<SpecialMove>,
 }
 
-/// parses PGN moves, no validation of the actual move. The only validation involved is to ensure
-/// the source piece exists
-pub fn parse_move(board: &Board, cmd: &str, is_white: bool) -> Result<Move, ParseError> {
+/// parses PGN moves, there is no validation of the move. All validations are
+/// done on game.rs (this includes promotion logic)
+/// It is only responsible to make sure the string is a correct PGN format
+pub fn parse_move(cmd: &str) -> Result<ParsedMove, ParseError> {
     if cmd.len() <= 1 {
         // invalid
         return Err(ParseError::InvalidLength);
     }
 
     let mut chars = cmd.chars();
-    let mut is_capture = false;
-    let mut from: u64 = 0;
-    let mut to: u64 = 0;
-    let mut special_move: Option<SpecialMove> = None;
     let source = chars.next().unwrap();
     let piece = parse_source(source)?;
 
     match piece {
-        Piece::Pawn => return parse_pawn(board, source, chars, is_white),
+        Piece::Pawn => parse_pawn(source, chars),
 
-        Piece::Knight | Piece::Rook | Piece::Bishop | Piece::Queen | Piece::King => {}
+        Piece::Knight | Piece::Rook | Piece::Bishop | Piece::Queen | Piece::King => {
+            parse_piece(piece, chars)
+        }
 
-        Piece::Castling => return parse_castling(board, cmd, is_white),
+        Piece::Castling => parse_castling(cmd),
     }
-    Ok(Move {
+}
+
+fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError> {
+    let mut is_capture = false;
+    let mut to: u64 = 0;
+
+    #[derive(Debug, PartialEq)]
+    enum PieceParserState {
+        Initial,
+        PotentialTargetFileParsed,
+        PotentialTargetRankParsed,
+        PotentialTargetParsed,
+        SourceParsed,
+        TargetFileParsed,
+        TargetParsed,
+    }
+
+    let mut state = PieceParserState::Initial;
+
+    let mut potential_target_rank: u64 = 0;
+    let mut potential_target_file: char = ' ';
+
+    let mut source_file: Option<char> = None;
+    let mut source_rank: Option<u64> = None;
+
+    while let Some(c) = chars.next() {
+        match state {
+            PieceParserState::Initial => match c {
+                file @ 'a'..='h' => {
+                    potential_target_file = file;
+                    state = PieceParserState::PotentialTargetFileParsed;
+                }
+                rank @ '0'..='8' => {
+                    potential_target_rank = rank.to_digit(10).unwrap() as u64;
+                    state = PieceParserState::PotentialTargetRankParsed;
+                }
+                'x' => {
+                    state = PieceParserState::SourceParsed;
+                    is_capture = true;
+                }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
+                }
+            },
+
+            PieceParserState::PotentialTargetFileParsed => match c {
+                rank @ '0'..='8' => {
+                    potential_target_rank = rank.to_digit(10).unwrap() as u64;
+                    state = PieceParserState::PotentialTargetParsed;
+                }
+                'x' => {
+                    source_file = Some(potential_target_file);
+                    potential_target_file = ' ';
+                    state = PieceParserState::SourceParsed;
+                    is_capture = true;
+                }
+                // handling ambiguous
+                file @ 'a'..='h' => {
+                    source_file = Some(potential_target_file);
+                    potential_target_file = file;
+                    state = PieceParserState::TargetFileParsed;
+                }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
+                }
+            },
+            PieceParserState::PotentialTargetRankParsed => match c {
+                'x' => {
+                    source_rank = Some(potential_target_rank);
+                    potential_target_rank = 0;
+                    state = PieceParserState::SourceParsed;
+                    is_capture = true;
+                }
+                // handling ambiguous
+                file @ 'a'..='h' => {
+                    source_rank = Some(potential_target_rank);
+                    potential_target_file = file;
+                    to = bitboard_single(potential_target_file, potential_target_rank).unwrap();
+                    state = PieceParserState::TargetFileParsed;
+                }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
+                }
+
+            }
+            PieceParserState::PotentialTargetParsed => match c {
+                'x' => {
+                    source_file = Some(potential_target_file);
+                    source_rank = Some(potential_target_rank);
+                    potential_target_file= ' ';
+                    potential_target_rank = 0;
+                    state = PieceParserState::SourceParsed;
+                    is_capture = true;
+                }
+                file@ 'a'..='h' => {
+                    source_file = Some(potential_target_file);
+                    source_rank = Some(potential_target_rank);
+                    potential_target_file = file;
+                    to = bitboard_single(potential_target_file, potential_target_rank).unwrap();
+                    state = PieceParserState::TargetFileParsed;
+                }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
+                }
+            }
+
+            PieceParserState::SourceParsed => match c {
+                file @ 'a'..='h' => {
+                    potential_target_file = file;
+                    state = PieceParserState::PotentialTargetFileParsed;
+                }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
+                }
+            },
+            PieceParserState::TargetFileParsed => match c {
+                rank @ '0'..='8' => {
+                    potential_target_rank = rank.to_digit(10).unwrap() as u64;
+                    to = bitboard_single(potential_target_file, potential_target_rank).unwrap();
+                    state = PieceParserState::TargetParsed;
+                }
+                _ => {
+                    return Err(ParseError::InvalidTarget);
+                }
+            }
+            PieceParserState::TargetParsed => return match c {
+                _ => {
+                    Err(ParseError::InvalidTarget)
+                }
+            }
+        }
+    }
+
+    // final checks
+    if state == PieceParserState::PotentialTargetParsed {
+        to = bitboard_single(potential_target_file, potential_target_rank).unwrap();
+        state = PieceParserState::TargetParsed;
+    }
+
+    if state != PieceParserState::TargetParsed || to == 0 {
+        return Err(ParseError::InvalidTarget);
+    }
+
+    Ok(ParsedMove {
         piece,
-        from,
+        from_file: source_file,
+        from_rank: source_rank,
         to,
         is_capture,
-        is_white,
-        special_move,
+        special_move: None,
     })
 }
 
-fn parse_castling(board: &Board, cmd: &str, is_white: bool) -> Result<Move, ParseError> {
+fn parse_castling(cmd: &str) -> Result<ParsedMove, ParseError> {
     let mut special_move: Option<SpecialMove>;
     if cmd.eq("O-O") {
         special_move = Some(SpecialMove::CastlingKing);
@@ -81,34 +224,18 @@ fn parse_castling(board: &Board, cmd: &str, is_white: bool) -> Result<Move, Pars
         return Err(ParseError::InvalidCastling);
     }
 
-    let valid_king_position: bool;
-    if is_white {
-        valid_king_position = board.white_king & bitboard_single('e', 1).unwrap() != 0;
-    } else {
-        valid_king_position = board.black_king & bitboard_single('e', 8).unwrap() != 0;
-    }
-    if !valid_king_position {
-        return Err(ParseError::InvalidCastling);
-    }
-
-    Ok(Move {
+    Ok(ParsedMove {
         piece: Piece::Castling,
-        from: 0,
+        from_file: None,
+        from_rank: None,
         to: 0,
         is_capture: false,
-        is_white,
         special_move,
     })
 }
 
-fn parse_pawn(
-    board: &Board,
-    source: char,
-    mut chars: Chars,
-    is_white: bool,
-) -> Result<Move, ParseError> {
+fn parse_pawn(source: char, mut chars: Chars) -> Result<ParsedMove, ParseError> {
     let mut is_capture = false;
-    let mut from: u64 = 0;
     let mut to: u64 = 0;
     let mut special_move: Option<SpecialMove> = None;
 
@@ -121,8 +248,6 @@ fn parse_pawn(
     }
 
     let mut state = PawnParserState::Initial;
-    let mut can_promote = false;
-
     let mut target_rank: u64 = 0;
 
     while let Some(c) = chars.next() {
@@ -132,7 +257,6 @@ fn parse_pawn(
                     target_rank = rank.to_digit(10).unwrap() as u64;
                     to = bitboard_single(source, target_rank).unwrap();
                     state = PawnParserState::TargetParsed;
-                    can_promote = if is_white { rank == '8' } else { rank == '1' };
                 }
                 'x' => {
                     state = PawnParserState::Capturing;
@@ -150,7 +274,6 @@ fn parse_pawn(
                                 target_rank = rank.to_digit(10).unwrap() as u64;
                                 to = bitboard_single(file, target_rank).unwrap();
                                 state = PawnParserState::TargetParsed;
-                                can_promote = if is_white { rank == '8' } else { rank == '1' };
                             }
                             _ => {
                                 return Err(ParseError::InvalidTarget);
@@ -165,7 +288,7 @@ fn parse_pawn(
                 }
             },
             PawnParserState::TargetParsed => match c {
-                '=' if can_promote => {
+                '=' => {
                     state = PawnParserState::PromotionPiece;
                 }
                 _ => {
@@ -188,15 +311,7 @@ fn parse_pawn(
         }
     }
 
-    render_bitboard(&to, 'p');
-    from = resolve_pawn_source(board, source, target_rank, to, is_capture, is_white);
-
-    render_bitboard(&from, 'f');
-
     // final checks
-    if from == 0 {
-        return Err(ParseError::InvalidSource);
-    }
     if to == 0 {
         return Err(ParseError::InvalidTarget);
     }
@@ -204,12 +319,12 @@ fn parse_pawn(
         return Err(ParseError::InvalidTarget);
     }
 
-    Ok(Move {
+    Ok(ParsedMove {
         piece: Piece::Pawn,
-        from,
+        from_file: Some(source),
+        from_rank: None,
         to,
         is_capture,
-        is_white,
         special_move,
     })
 }
@@ -230,7 +345,6 @@ fn parse_source(c: char) -> Result<Piece, ParseError> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::board::PositionBuilder;
 
     #[test]
     fn test_parse_move() {
@@ -239,319 +353,358 @@ pub mod tests {
 
     #[test]
     fn test_parse_pawn_basic_moves() {
-        let board = Board::default();
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('e', 2).unwrap(),
+                from_file: Some('e'),
+                from_rank: None,
                 to: bitboard_single('e', 4).unwrap(),
                 is_capture: false,
-                is_white: true,
                 special_move: None,
             },
-            parse_move(&board, "e4", true).unwrap()
+            parse_move("e4").unwrap()
         );
 
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('f', 2).unwrap(),
+                from_file: Some('f'),
+                from_rank: None,
                 to: bitboard_single('f', 3).unwrap(),
                 is_capture: false,
-                is_white: true,
                 special_move: None,
             },
-            parse_move(&board, "f3", true).unwrap()
+            parse_move("f3").unwrap()
         );
 
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('e', 7).unwrap(),
+                from_file: Some('e'),
+                from_rank: None,
                 to: bitboard_single('e', 5).unwrap(),
                 is_capture: false,
-                is_white: false,
                 special_move: None,
             },
-            parse_move(&board, "e5", false).unwrap()
+            parse_move("e5").unwrap()
         );
 
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('h', 7).unwrap(),
+                from_file: Some('h'),
+                from_rank: None,
                 to: bitboard_single('h', 6).unwrap(),
                 is_capture: false,
-                is_white: false,
                 special_move: None,
             },
-            parse_move(&board, "h6", false).unwrap()
+            parse_move("h6").unwrap()
         );
 
-        // white can't go to e5
-        assert_eq!(
-            Err(ParseError::InvalidSource),
-            parse_move(&board, "e5", true)
-        );
+        assert_eq!(Err(ParseError::InvalidSource), parse_move("x5"));
 
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move(&board, "e9", true)
-        );
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("e9"));
 
-        assert_eq!(
-            Err(ParseError::InvalidLength),
-            parse_move(&board, "a", true)
-        );
+        assert_eq!(Err(ParseError::InvalidLength), parse_move("a"));
     }
 
     #[test]
     fn test_parse_pawn_capture() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('e', 2)
-            .add_piece('e', 3)
-            .add_piece('a', 2)
-            .add_piece('g', 2) // blocked
-            .add_piece('h', 2)
-            .build();
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 7)
-            .add_piece('d', 4)
-            .add_piece('g', 3)
-            .build();
-        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
-
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('e', 3).unwrap(),
+                from_file: Some('e'),
+                from_rank: None,
                 to: bitboard_single('d', 4).unwrap(),
                 is_capture: true,
-                is_white: true,
                 special_move: None,
             },
-            parse_move(&board, "exd4", true).unwrap()
+            parse_move("exd4").unwrap()
         );
 
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move(&board, "exd", true)
-        );
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("exd"));
 
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('g', 3).unwrap(),
+                from_file: Some('g'),
+                from_rank: None,
                 to: bitboard_single('h', 2).unwrap(),
                 is_capture: true,
-                is_white: false,
                 special_move: None,
             },
-            parse_move(&board, "gxh2", false).unwrap()
+            parse_move("gxh2").unwrap()
         );
     }
 
     #[test]
     fn test_parse_pawn_promotion() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('e', 2)
-            .add_piece('e', 3)
-            .add_piece('a', 2)
-            .add_piece('g', 2) // blocked
-            .add_piece('h', 7)
-            .build();
-        let white_knights: u64 = PositionBuilder::new()
-            .add_piece('b', 1)
-            .add_piece('g', 1)
-            .build();
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 7)
-            .add_piece('d', 2)
-            .add_piece('g', 3)
-            .build();
-        let black_knights: u64 = PositionBuilder::new()
-            .add_piece('b', 8)
-            .add_piece('g', 8)
-            .build();
-        let board = Board::new(
-            white_pawns,
-            white_knights,
-            0,
-            0,
-            0,
-            0,
-            black_pawns,
-            black_knights,
-            0,
-            0,
-            0,
-            0,
-        );
-
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('h', 7).unwrap(),
+                from_file: Some('h'),
+                from_rank: None,
                 to: bitboard_single('g', 8).unwrap(),
                 is_capture: true,
-                is_white: true,
                 special_move: Some(SpecialMove::Promotion(Piece::Rook)),
             },
-            parse_move(&board, "hxg8=R", true).unwrap()
+            parse_move("hxg8=R").unwrap()
         );
 
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('d', 2).unwrap(),
+                from_file: Some('d'),
+                from_rank: None,
                 to: bitboard_single('d', 1).unwrap(),
                 is_capture: false,
-                is_white: false,
                 special_move: Some(SpecialMove::Promotion(Piece::Queen)),
             },
-            parse_move(&board, "d1=Q", false).unwrap()
+            parse_move("d1=Q").unwrap()
         );
 
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('d', 2).unwrap(),
+                from_file: Some('d'),
+                from_rank: None,
                 to: bitboard_single('d', 1).unwrap(),
                 is_capture: false,
-                is_white: false,
                 special_move: Some(SpecialMove::Promotion(Piece::Knight)),
             },
-            parse_move(&board, "d1=N", false).unwrap()
+            parse_move("d1=N").unwrap()
         );
 
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Pawn,
-                from: bitboard_single('d', 2).unwrap(),
+                from_file: Some('d'),
+                from_rank: None,
                 to: bitboard_single('d', 1).unwrap(),
                 is_capture: false,
-                is_white: false,
                 special_move: Some(SpecialMove::Promotion(Piece::Bishop)),
             },
-            parse_move(&board, "d1=B", false).unwrap()
+            parse_move("d1=B").unwrap()
         );
 
-        // can't promote if not at the end
+        // no check if promotion is valid (target rank is invalid)
         assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move(&board, "a3=Q", true)
+            ParsedMove {
+                piece: Piece::Pawn,
+                from_file: Some('a'),
+                from_rank: None,
+                to: bitboard_single('a', 3).unwrap(),
+                is_capture: false,
+                special_move: Some(SpecialMove::Promotion(Piece::Queen)),
+            },
+            parse_move("a3=Q").unwrap()
         );
 
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move(&board, "h8=", true)
-        );
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("h8="));
 
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move(&board, "h8=O", true)
-        );
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("h8=O"));
     }
 
     #[test]
     fn test_parse_castling() {
-        let white_rooks: u64 = PositionBuilder::new()
-            .add_piece('a', 1)
-            .add_piece('h', 1)
-            .build();
-        let white_king: u64 = PositionBuilder::new().add_piece('e', 1).build();
-        let black_rooks: u64 = PositionBuilder::new()
-            .add_piece('a', 8)
-            .add_piece('h', 8)
-            .build();
-        let black_king: u64 = PositionBuilder::new().add_piece('e', 8).build();
-        let board = Board::new(
-            0,
-            0,
-            white_rooks,
-            0,
-            0,
-            white_king,
-            0,
-            0,
-            black_rooks,
-            0,
-            0,
-            black_king,
-        );
-
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Castling,
-                from: 0,
+                from_file: None,
+                from_rank: None,
                 to: 0,
                 is_capture: false,
-                is_white: true,
                 special_move: Some(SpecialMove::CastlingKing),
             },
-            parse_move(&board, "O-O", true).unwrap()
+            parse_move("O-O").unwrap()
         );
         assert_eq!(
-            Move {
+            ParsedMove {
                 piece: Piece::Castling,
-                from: 0,
+                from_file: None,
+                from_rank: None,
                 to: 0,
                 is_capture: false,
-                is_white: false,
-                special_move: Some(SpecialMove::CastlingKing),
-            },
-            parse_move(&board, "O-O", false).unwrap()
-        );
-        assert_eq!(
-            Move {
-                piece: Piece::Castling,
-                from: 0,
-                to: 0,
-                is_capture: false,
-                is_white: true,
                 special_move: Some(SpecialMove::CastlingQueen),
             },
-            parse_move(&board, "O-O-O", true).unwrap()
+            parse_move("O-O-O").unwrap()
         );
+        assert_eq!(Err(ParseError::InvalidCastling), parse_move("O-"));
+    }
+
+    #[test]
+    fn test_parse_pieces_simple_moves() {
         assert_eq!(
-            Move {
-                piece: Piece::Castling,
-                from: 0,
-                to: 0,
+            ParsedMove {
+                piece: Piece::Knight,
+                from_file: None,
+                from_rank: None,
+                to: bitboard_single('f', 3).unwrap(),
                 is_capture: false,
-                is_white: false,
-                special_move: Some(SpecialMove::CastlingQueen),
+                special_move: None,
             },
-            parse_move(&board, "O-O-O", false).unwrap()
+            parse_move("Nf3").unwrap()
         );
         assert_eq!(
-            Err(ParseError::InvalidCastling),
-            parse_move(&board, "O-", true)
+            ParsedMove {
+                piece: Piece::Queen,
+                from_file: None,
+                from_rank: None,
+                to: bitboard_single('f', 3).unwrap(),
+                is_capture: false,
+                special_move: None,
+            },
+            parse_move("Qf3").unwrap()
         );
-
-        let white_rooks: u64 = PositionBuilder::new()
-            .add_piece('a', 1)
-            .add_piece('h', 1)
-            .build();
-        let white_king: u64 = PositionBuilder::new().add_piece('g', 2).build();
-        let board = Board::new(
-            0,
-            0,
-            white_rooks,
-            0,
-            0,
-            white_king,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        );
-
         assert_eq!(
-            Err(ParseError::InvalidCastling),
-            parse_move(&board, "O-O", true)
+            ParsedMove {
+                piece: Piece::Bishop,
+                from_file: None,
+                from_rank: None,
+                to: bitboard_single('a', 2).unwrap(),
+                is_capture: false,
+                special_move: None,
+            },
+            parse_move("Ba2").unwrap()
+        );
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::Rook,
+                from_file: None,
+                from_rank: None,
+                to: bitboard_single('h', 7).unwrap(),
+                is_capture: false,
+                special_move: None,
+            },
+            parse_move("Rh7").unwrap()
+        );
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::King,
+                from_file: None,
+                from_rank: None,
+                to: bitboard_single('e', 1).unwrap(),
+                is_capture: false,
+                special_move: None,
+            },
+            parse_move("Ke1").unwrap()
+        );
+        assert_eq!(
+            Err(ParseError::InvalidSource),
+            parse_move("Je1")
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Nz9")
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Ne")
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("N1")
+        );
+    }
+
+    #[test]
+    fn test_parse_pieces_capture() {
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::Queen,
+                from_file: None,
+                from_rank: None,
+                to: bitboard_single('b', 2).unwrap(),
+                is_capture: true,
+                special_move: None,
+            },
+            parse_move("Qxb2").unwrap()
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Qxxb2")
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Qx2")
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Qxe")
+        );
+    }
+
+    #[test]
+    fn test_parse_pieces_ambiguous() {
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::Queen,
+                from_file: Some('e'),
+                from_rank: None,
+                to: bitboard_single('b', 2).unwrap(),
+                is_capture: false,
+                special_move: None,
+            },
+            parse_move("Qeb2").unwrap()
+        );
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::Queen,
+                from_file: None,
+                from_rank: Some(1),
+                to: bitboard_single('b', 2).unwrap(),
+                is_capture: false,
+                special_move: None,
+            },
+            parse_move("Q1b2").unwrap()
+        );
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::Queen,
+                from_file: Some('h'),
+                from_rank: Some(8),
+                to: bitboard_single('b', 2).unwrap(),
+                is_capture: false,
+                special_move: None,
+            },
+            parse_move("Qh8b2").unwrap()
+        );
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::Queen,
+                from_file: Some('e'),
+                from_rank: None,
+                to: bitboard_single('b', 2).unwrap(),
+                is_capture: true,
+                special_move: None,
+            },
+            parse_move("Qexb2").unwrap()
+        );
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::Queen,
+                from_file: None,
+                from_rank: Some(1),
+                to: bitboard_single('b', 2).unwrap(),
+                is_capture: true,
+                special_move: None,
+            },
+            parse_move("Q1xb2").unwrap()
+        );
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::Queen,
+                from_file: Some('h'),
+                from_rank: Some(8),
+                to: bitboard_single('b', 2).unwrap(),
+                is_capture: true,
+                special_move: None,
+            },
+            parse_move("Qh8xb2").unwrap()
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Qh8b2b")
         );
     }
 
