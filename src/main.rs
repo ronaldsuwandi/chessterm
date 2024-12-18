@@ -50,8 +50,9 @@
 //     Ok(())
 // }
 
+use std::error::Error;
 use crate::board::bitboard_single;
-use crate::game::Game;
+use crate::game::{Game, MoveError};
 
 mod board;
 mod moves;
@@ -59,40 +60,31 @@ mod game;
 mod macros;
 mod parser;
 
-fn main() {
-    // draw_chessboard().unwrap();
-
-    // let idx = bit_pos('f', 2).unwrap();
-
-    // let mut bitboard: u64 = 1 << 53;
-    // bitboard = bitboard | (1 << idx);
-
-    // board::render_bitboard(&bitboard, '♟');
-
-    // let file = 'e';
-    // let rank = 2u64;
-
-    // println!("bit_pos for {}{} = {:?}", file, rank, bit_pos(file, rank));
-
+fn main() -> Result<(), MoveError>{
     let mut game = Game::default();
     game.board.render();
-    game.move_pawn(bitboard_single('e',2).unwrap(), bitboard_single('e',4).unwrap());
+    game.process_move("e4")?;
+    // game.move_pawn(bitboard_single('e',2).unwrap(), bitboard_single('e',4).unwrap());
     game.board.render();
-    game.move_pawn(bitboard_single('f',7).unwrap(), bitboard_single('f',5).unwrap());
+    game.process_move("e5")?;
     game.board.render();
-    game.move_pawn(bitboard_single('d',2).unwrap(), bitboard_single('d',3).unwrap());
+    game.process_move("e5")?;
     game.board.render();
-    game.move_knight(bitboard_single('g',8).unwrap(), bitboard_single('f',6).unwrap());
-    game.board.render();
-    game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap());
-    game.board.render();
-    // move black c8->c7 bishop (invalid)
-    game.move_pawn(bitboard_single('c',8).unwrap(), bitboard_single('c',7).unwrap());
-    game.board.render();
-    game.move_pawn(bitboard_single('c',7).unwrap(), bitboard_single('c',5).unwrap());
-    game.board.render();
-    game.move_bishop(bitboard_single('f',1).unwrap(), bitboard_single('e',2).unwrap());
-    game.board.render();
+    // game.move_pawn(bitboard_single('f',7).unwrap(), bitboard_single('f',5).unwrap());
+    // game.board.render();
+    // game.move_pawn(bitboard_single('d',2).unwrap(), bitboard_single('d',3).unwrap());
+    // game.board.render();
+    // game.move_knight(bitboard_single('g',8).unwrap(), bitboard_single('f',6).unwrap());
+    // game.board.render();
+    // game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap());
+    // game.board.render();
+    // // move black c8->c7 bishop (invalid)
+    // game.move_pawn(bitboard_single('c',8).unwrap(), bitboard_single('c',7).unwrap());
+    // game.board.render();
+    // game.move_pawn(bitboard_single('c',7).unwrap(), bitboard_single('c',5).unwrap());
+    // game.board.render();
+    // game.move_bishop(bitboard_single('f',1).unwrap(), bitboard_single('e',2).unwrap());
+    // game.board.render();
     // // println!("CAPTURE F5");
     // // println!("{}", game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap(), true));
     // game.board.render();
@@ -112,4 +104,5 @@ fn main() {
 
     // println!("black2");
     // render_bitboard(&game.board.black_pawns, 'b');
+    Ok(())
 }

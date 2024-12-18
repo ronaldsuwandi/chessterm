@@ -1,10 +1,20 @@
 use crate::board::Board;
-use crate::moves::{compute_bishops_moves, compute_knights_moves, compute_pawns_moves, compute_rooks_moves};
+use crate::moves::{compute_bishops_moves, compute_knights_moves, compute_pawns_moves, compute_rooks_moves, resolve_pawn_source};
+use crate::parser::{parse_move, ParsedMove, Piece};
 
 /// Game struct responsible for all game logics (pin, check, valid captures, etc)
 pub struct Game {
     pub board: Board,
     pub turn: u8,
+
+}
+
+#[derive(Debug, PartialEq)]
+pub enum MoveError {
+    AmbiguousSource,
+    InvalidMove,
+    Pinned,
+    ParseError,
 }
 
 impl Game {
@@ -17,6 +27,36 @@ impl Game {
 
     fn is_white(&self) -> bool {
         self.turn % 2 == 1
+    }
+
+    pub fn process_move(&mut self, cmd: &str) -> Result<bool, MoveError>  {
+        if let Ok(parsed_move) = parse_move(cmd) {
+            match parsed_move.piece {
+                Piece::Pawn => {
+                    self.process_pawn(parsed_move)?;
+                }
+                Piece::Knight | Piece::Rook | Piece::Bishop | Piece::Queen => {
+
+                }
+                Piece::King => {}
+                Piece::Castling => {}
+            }
+
+            Ok(true)
+        } else {
+            Err(MoveError::ParseError)
+        }
+
+    }
+
+    fn process_pawn(&mut self, mv: ParsedMove) -> Result<bool, MoveError> {
+        let to = mv.to;
+        let from = resolve_pawn_source(&self.board, mv, self.is_white());
+        if self.move_pawn(from, to) {
+            Ok(true)
+        } else {
+            Err(MoveError::InvalidMove)
+        }
     }
 
     fn move_piece<F>(
@@ -117,12 +157,6 @@ impl Game {
         self.move_piece(from, to, pawns, is_white, compute_pawns_moves, None)
     }
 
-    pub fn process_move(&mut self, cmd: &str) -> bool{
-
-        true
-    }
-
-
     // TODO implement parse move and game logic for check and pin
     // fn parse_move(&self, cmd: &str)
 }
@@ -139,9 +173,6 @@ pub mod tests {
 
 
     // test for move_pieces
-
-    use crate::board::{bitboard_single, Board, PositionBuilder};
-    use crate::parser::{parse_move, ParseError, ParsedMove, Piece};
 
     // #[test]
     // fn test_process_move()
