@@ -1,7 +1,7 @@
 use crate::board::{is_rank, render_bitboard, Board};
 use crate::moves::{
     compute_bishops_moves, compute_knights_moves, compute_pawns_moves, compute_rooks_moves,
-    resolve_pawn_source,
+    resolve_knight_source, resolve_pawn_source,
 };
 use crate::parser::{parse_move, ParsedMove, Piece, SpecialMove};
 
@@ -48,30 +48,44 @@ impl Game {
         self.turn % 2 == 1
     }
 
-    pub fn process_move(&mut self, cmd: &str) -> Result<bool, MoveError> {
+    pub fn process_move(&mut self, cmd: &str) -> Result<(), MoveError> {
         if let Ok(parsed_move) = parse_move(cmd) {
             match parsed_move.piece {
                 Piece::Pawn => {
-                    self.process_pawn(parsed_move)?;
+                    // special case for pawns
+                    self.process_pawn(parsed_move)
                 }
                 Piece::Knight => {
-                    self.process_knight(parsed_move)?;
+                    self.process_piece(parsed_move, resolve_knight_source, Self::move_knight)
                 }
-                Piece::Bishop | Piece::Queen => {
-
+                Piece::Bishop  => {
+                    // self.process_piece(parsed_move, resolve_bishop_source, Self::move_bishop)
+                    Ok(())
                 }
-                Piece::Rook => {}
-                Piece::King => {}
-                Piece::Castling => {}
+                Piece::Queen => {
+                    // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
+                    Ok(())
+                }
+                Piece::Rook => {
+                     // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
+                    Ok(())
+                }
+                Piece::King => {
+                     // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
+                    Ok(())
+                }
+                Piece::Castling => {
+                     // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
+                    Ok(())
+                }
             }
 
-            Ok(true)
         } else {
             Err(MoveError::ParseError)
         }
     }
 
-    fn process_pawn(&mut self, mv: ParsedMove) -> Result<bool, MoveError> {
+    fn process_pawn(&mut self, mv: ParsedMove) -> Result<(), MoveError> {
         let to = mv.to;
         let from = resolve_pawn_source(&self.board, &mv, self.is_white());
 
@@ -79,21 +93,27 @@ impl Game {
             return Err(MoveError::InvalidMove);
         }
         if self.move_pawn(from, to, mv) {
-            Ok(true)
+            Ok(())
         } else {
             Err(MoveError::InvalidMove)
         }
     }
 
-    fn process_knight(&mut self, mv: ParsedMove) -> Result<bool, MoveError> {
+    fn process_piece<F, G>(
+        &mut self,
+        mv: ParsedMove,
+        source_resolver_fn: F,
+        move_fn: G,
+    ) -> Result<(), MoveError>
+    where
+        F: Fn(&Board, &ParsedMove, bool) -> u64,
+        G: Fn(&mut Self, u64, u64, ParsedMove) -> bool
+    {
         let to = mv.to;
-        let from = resolve_pawn_source(&self.board, &mv, self.is_white());
+        let from = source_resolver_fn(&self.board, &mv, self.is_white());
 
-        if !self.validate_pawn_move(from, to, &mv, self.is_white()) {
-            return Err(MoveError::InvalidMove);
-        }
-        if self.move_pawn(from, to, mv) {
-            Ok(true)
+        if move_fn(self, from, to, mv) {
+            Ok(())
         } else {
             Err(MoveError::InvalidMove)
         }
@@ -101,11 +121,6 @@ impl Game {
 
     // pawn specific move validation (diagonal capture, promotion, etc)
     fn validate_pawn_move(&self, from: u64, to: u64, mv: &ParsedMove, is_white: bool) -> bool {
-        if from == 0 || to == 0 {
-            // no valid from/to
-            return false;
-        }
-
         if mv.is_capture {
             let diagonal_moves = if is_white {
                 (from << 7) | (from << 9) // diagonal forward left/right
@@ -142,7 +157,7 @@ impl Game {
         is_white: bool,
         is_capture: bool,
         compute_moves: F,
-    ) -> bool
+    ) -> Result<(), MoveError>
     where
         F: Fn(&Board, bool) -> u64,
     {
@@ -150,34 +165,43 @@ impl Game {
 
         if from == to {
             println!("Invalid from and to square");
-            return false;
+            return Err(MoveError::InvalidMove);
+        }
+
+        if from == 0 || to == 0 {
+            println!("No source or target square");
+            return Err(MoveError::InvalidMove);
+        }
+
+        if to.count_ones() != 1 {
+            println!("Target must only have 1 position");
+            return Err(MoveError::InvalidMove);
+        }
+
+        if from.count_ones() > 1 {
+            println!("Ambiguous source");
+            return Err(MoveError::AmbiguousSource);
         }
 
         if (from & pieces) == 0 {
             println!("Invalid from square");
-            return false;
+            return Err(MoveError::InvalidMove);
         }
 
         if (to & pseudolegal_moves) == 0 {
             println!("Invalid target square");
-            return false;
+            return Err(MoveError::InvalidMove);
         }
 
         let target_must_be_captured = self.board.is_capture(to, is_white);
         if is_capture != target_must_be_captured {
             println!("Target must be captured, not moved");
-            return false;
-        }
-
-        let target_must_be_captured = self.board.is_capture(to, is_white);
-
-        if is_capture != target_must_be_captured {
-            return false;
+            return Err(MoveError::InvalidMove);
         }
 
         // TODO check for pin
 
-        true
+        Ok(())
     }
 
     fn move_piece<F>(
@@ -192,7 +216,7 @@ impl Game {
     where
         F: Fn(&Board, bool) -> u64,
     {
-        if !self.validate_move_piece(from, to, pieces, is_white, is_capture, &compute_moves) {
+        if self.validate_move_piece(from, to, pieces, is_white, is_capture, &compute_moves).is_err() {
             return false;
         }
 
@@ -237,7 +261,7 @@ impl Game {
         self.move_piece(from, to, rooks, is_white, is_capture, compute_rooks_moves)
     }
 
-    pub fn move_knight(&mut self, from: u64, to: u64, is_capture: bool) -> bool {
+    pub fn move_knight(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> bool {
         let is_white = self.is_white();
         let knights = if is_white {
             self.board.white_knights
@@ -250,7 +274,7 @@ impl Game {
             to,
             knights,
             is_white,
-            is_capture,
+            parsed_move.is_capture,
             compute_knights_moves,
         )
     }
@@ -371,7 +395,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_parse_pawn_capture() {
+    fn test_pawn_capture() {
         let white_pawns: u64 = PositionBuilder::new()
             .add_piece('e', 2)
             .add_piece('e', 3)
@@ -394,7 +418,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_parse_pawn_promotion() {
+    fn test_pawn_promotion() {
         let white_pawns: u64 = PositionBuilder::new()
             .add_piece('e', 2)
             .add_piece('e', 3)
@@ -452,6 +476,58 @@ pub mod tests {
         game.turn = 4; // switch to black
                        // promotion doesn't work if not rank 1 for black
         assert!(game.process_move("a6=R").is_err());
+    }
+
+    #[test]
+    fn test_knight() {
+        let white_pawns: u64 = PositionBuilder::new()
+            .add_piece('e', 2)
+            .add_piece('c', 4)
+            .build();
+        let white_knights: u64 = PositionBuilder::new()
+            .add_piece('e', 1)
+            .add_piece('g', 1)
+            .build();
+        let black_pawns: u64 = PositionBuilder::new()
+            .add_piece('e', 3)
+            .add_piece('f', 3)
+            .build();
+        let black_knights: u64 = PositionBuilder::new()
+            .add_piece('b', 8)
+            .add_piece('b', 6)
+            .build();
+        let board = Board::new(
+            white_pawns,
+            white_knights,
+            0,
+            0,
+            0,
+            0,
+            black_pawns,
+            black_knights,
+            0,
+            0,
+            0,
+            0,
+        );
+
+        let mut game = Game::new(board);
+
+        // blocked by own piece
+        assert!(game.process_move("Ne2").is_err());
+        // ambiguous
+        assert!(game.process_move("Nxf3").is_err());
+        // must capture
+        assert!(game.process_move("Ngf3").is_err());
+        assert!(game.process_move("Ngxf3").is_ok());
+
+        // black then capture c4
+        assert!(game.process_move("Nxc4").is_ok());
+
+        // additional more detailed selector works
+        assert!(game.process_move("N3e5").is_ok());
+        assert!(game.process_move("Nb8a6").is_ok());
+        assert!(game.process_move("Ne5xc4").is_ok());
     }
 
     // #[test]
