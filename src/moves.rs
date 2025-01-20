@@ -1,4 +1,4 @@
-use crate::board::{bitboard_single, is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H, MASK_RANK_2, MASK_RANK_7};
+use crate::board::{bitboard_single, is_file, is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H, MASK_RANK_2, MASK_RANK_7};
 use crate::parser::ParsedMove;
 use crate::precompute_moves;
 // move generation related, only generate pseudo-legal moves
@@ -451,11 +451,10 @@ pub fn compute_king_moves(board: &Board, is_white: bool) -> u64 {
 
 // pawn source will always be resolvable
 pub fn resolve_pawn_source(board: &Board,
-                           parsed_move: ParsedMove,
+                           parsed_move: &ParsedMove,
                            is_white: bool) -> u64 {
 
-    let target_rank: u64 = (parsed_move.to.trailing_zeros() / 8) as u64;
-
+    let target_rank: u64 = (parsed_move.to.trailing_zeros() / 8) as u64 + 1;
     // determine from
     if is_white {
         if parsed_move.is_capture {
@@ -478,11 +477,48 @@ pub fn resolve_pawn_source(board: &Board,
     }
 }
 
+// knight returns bitboard of the potential source, this means there may be more than 1 knight
+pub fn resolve_knight_source(board: &Board, parsed_move: &ParsedMove, is_white: bool) -> u64 {
+    let mut knights = if is_white {
+        board.white_knights
+    } else {
+        board.black_knights
+    };
+
+    let mut source = 0;
+    while knights > 0 {
+        // get current knight position using LSB in bitboard
+        let knight_position = knights & !(knights - 1);
+        let knight_idx = knight_position.trailing_zeros() as usize;
+
+        // remove the knight from the bitboard
+        knights ^= knight_position;
+
+        let x = KNIGHT_MOVES[knight_idx];
+
+        if KNIGHT_MOVES[knight_idx] & parsed_move.to != 0 {
+            if let Some(from_file) =parsed_move.from_file {
+                if !is_file(knight_position, from_file) {
+                    continue;
+                }
+            }
+            if let Some(from_rank) =parsed_move.from_rank {
+                if !is_rank(knight_position, from_rank) {
+                    continue;
+                }
+            }
+            source |= knight_position;
+        }
+    }
+    source
+}
+
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::board::{bit_pos, bitboard_single, render_bitboard, Board, PositionBuilder};
+    use crate::board::{bit_pos, render_bitboard, Board, PositionBuilder};
+    use crate::parser::parse_move;
 
     #[test]
     fn test_diagonal_captures_pawn() {
@@ -1214,4 +1250,160 @@ pub mod tests {
         assert_eq!(expected_white_king_moves, compute_king_moves(&board, true));
         assert_eq!(expected_black_king_moves, compute_king_moves(&board, false));
     }
+
+    #[test]
+    fn test_resolve_pawn_source() {
+        let white_pawns: u64 = PositionBuilder::new()
+            .add_piece('e', 2)
+            .add_piece('e', 3)
+            .add_piece('h', 7)
+            .build();
+        let white_knights: u64 = PositionBuilder::new()
+            .add_piece('b', 1)
+            .add_piece('g', 1)
+            .build();
+        let black_pawns: u64 = PositionBuilder::new()
+            .add_piece('a', 7)
+            .add_piece('d', 3)
+            .add_piece('g', 3)
+            .build();
+        let black_knights: u64 = PositionBuilder::new()
+            .add_piece('b', 8)
+            .add_piece('g', 8)
+            .build();
+        let board = Board::new(
+            white_pawns,
+            white_knights,
+            0,
+            0,
+            0,
+            0,
+            black_pawns,
+            black_knights,
+            0,
+            0,
+            0,
+            0,
+        );
+
+        assert_eq!(
+            bitboard_single('e', 2).unwrap(),
+            resolve_pawn_source(&board, &parse_move("exd3").unwrap(), true)
+        );
+        assert_eq!(
+            bitboard_single('h', 7).unwrap(),
+            resolve_pawn_source(&board,  &parse_move("h8").unwrap(), true)
+        );
+        assert_eq!(
+            bitboard_single('h', 7).unwrap(),
+            resolve_pawn_source(&board,  &parse_move("hxg8").unwrap(), true)
+        );
+        assert_eq!(
+            bitboard_single('a', 7).unwrap(),
+            resolve_pawn_source(&board,  &parse_move("a5").unwrap(), false)
+        );
+    }
+
+
+    #[test]
+    fn test_resolve_knight_source() {
+        let white_knights: u64 = PositionBuilder::new()
+            .add_piece('e', 1)
+            .add_piece('g', 1)
+            .build();
+        let black_knights: u64 = PositionBuilder::new()
+            .add_piece('b', 8)
+            .add_piece('b', 6)
+            .build();
+        let board = Board::new(
+            0,
+            white_knights,
+            0,
+            0,
+            0,
+            0,
+            0,
+            black_knights,
+            0,
+            0,
+            0,
+            0,
+        );
+
+        // non-ambiguous source
+        assert_eq!(
+            bitboard_single('e', 1).unwrap(),
+            resolve_knight_source(&board, &parse_move("Nd3").unwrap(), true)
+        );
+        assert_eq!(
+            bitboard_single('b', 6).unwrap(),
+            resolve_knight_source(&board,  &parse_move("Na4").unwrap(), false)
+        );
+
+        // ambiguous moves
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('e', 1)
+                .add_piece('g', 1)
+                .build(),
+            resolve_knight_source(&board,  &parse_move("Nf3").unwrap(), true)
+        );
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('b', 8)
+                .add_piece('b', 6)
+                .build(),
+            resolve_knight_source(&board,  &parse_move("Nd7").unwrap(), false)
+        );
+
+        // ambiguous move with more details
+        assert_eq!(
+            bitboard_single('e', 1).unwrap(),
+            resolve_knight_source(&board,  &parse_move("Nef3").unwrap(), true)
+        );
+        assert_eq!(
+            bitboard_single('b', 6).unwrap(),
+            resolve_knight_source(&board,  &parse_move("N6d7").unwrap(), false)
+        );
+
+        // ambiguous move with more details but still ambiguous
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('e', 1)
+                .add_piece('g', 1)
+                .build(),
+            resolve_knight_source(&board,  &parse_move("N1f3").unwrap(), true)
+        );
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('b', 8)
+                .add_piece('b', 6)
+                .build(),
+            resolve_knight_source(&board,  &parse_move("Nbd7").unwrap(), false)
+        );
+
+        let black_knights: u64 = PositionBuilder::new()
+            .add_piece('b', 8)
+            .add_piece('b', 6)
+            .build();
+        let board = Board::new(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            black_knights,
+            0,
+            0,
+            0,
+            0,
+        );
+
+        // no white knight
+        assert_eq!(0, resolve_knight_source(&board, &parse_move("Nf3").unwrap(), true));
+    }
+
+
 }

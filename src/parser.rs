@@ -252,7 +252,7 @@ fn parse_pawn(source: char, mut chars: Chars) -> Result<ParsedMove, ParseError> 
     while let Some(c) = chars.next() {
         match state {
             PawnParserState::Initial => match c {
-                rank @ '0'..='8' => {
+                rank @ '1'..='8' => {
                     target_rank = rank.to_digit(10).unwrap() as u64;
                     to = bitboard_single(source, target_rank).unwrap();
                     state = PawnParserState::TargetParsed;
@@ -269,7 +269,7 @@ fn parse_pawn(source: char, mut chars: Chars) -> Result<ParsedMove, ParseError> 
                 file @ 'a'..='h' => {
                     if let Some(c) = chars.next() {
                         match c {
-                            rank @ '0'..='8' => {
+                            rank @ '1'..='8' => {
                                 target_rank = rank.to_digit(10).unwrap() as u64;
                                 to = bitboard_single(file, target_rank).unwrap();
                                 state = PawnParserState::TargetParsed;
@@ -300,7 +300,6 @@ fn parse_pawn(source: char, mut chars: Chars) -> Result<ParsedMove, ParseError> 
                     'R' => Piece::Rook,
                     'B' => Piece::Bishop,
                     'Q' => Piece::Queen,
-                    'K' => Piece::King,
                     _ => {
                         return Err(ParseError::InvalidTarget);
                     }
@@ -403,6 +402,8 @@ pub mod tests {
         assert_eq!(Err(ParseError::InvalidSource), parse_move("x5"));
 
         assert_eq!(Err(ParseError::InvalidTarget), parse_move("e9"));
+
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("e0"));
 
         assert_eq!(Err(ParseError::InvalidLength), parse_move("a"));
     }

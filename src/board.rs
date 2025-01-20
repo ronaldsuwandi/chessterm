@@ -1,3 +1,5 @@
+use crate::parser::Piece;
+
 #[derive(Debug)]
 pub struct Board {
     pub white_pawns: u64,
@@ -73,32 +75,42 @@ impl Board {
     }
 
     pub fn update_pieces(&mut self) {
-        self.white_pieces = self.white_pawns | self.white_knights | self.white_rooks | self.white_bishops | self.white_queens | self.white_king;
-        self.black_pieces = self.black_pawns | self.black_knights | self.black_rooks | self.black_bishops | self.black_queens | self.black_king;
+        self.white_pieces = self.white_pawns
+            | self.white_knights
+            | self.white_rooks
+            | self.white_bishops
+            | self.white_queens
+            | self.white_king;
+        self.black_pieces = self.black_pawns
+            | self.black_knights
+            | self.black_rooks
+            | self.black_bishops
+            | self.black_queens
+            | self.black_king;
         self.occupied = self.white_pieces | self.black_pieces;
         self.free = !self.occupied;
     }
 
     pub fn get_piece_at(&mut self, position: u64, is_white: bool) -> Option<&mut u64> {
         let pieces: [&mut u64; 6] = if is_white {
-                [
-                    &mut self.white_pawns,
-                    &mut self.white_knights,
-                    &mut self.white_rooks,
-                    &mut self.white_bishops,
-                    &mut self.white_queens,
-                    &mut self.white_king,
-                ]
-            } else {
-                [
-                    &mut self.black_pawns,
-                    &mut self.black_knights,
-                    &mut self.black_rooks,
-                    &mut self.black_bishops,
-                    &mut self.black_queens,
-                    &mut self.black_king,
-                ]
-            };
+            [
+                &mut self.white_pawns,
+                &mut self.white_knights,
+                &mut self.white_rooks,
+                &mut self.white_bishops,
+                &mut self.white_queens,
+                &mut self.white_king,
+            ]
+        } else {
+            [
+                &mut self.black_pawns,
+                &mut self.black_knights,
+                &mut self.black_rooks,
+                &mut self.black_bishops,
+                &mut self.black_queens,
+                &mut self.black_king,
+            ]
+        };
 
         for piece in pieces {
             if (*piece & position) != 0 {
@@ -121,6 +133,56 @@ impl Board {
         if let Some(piece) = self.get_piece_at(position, is_white) {
             *piece = *piece ^ position;
             self.update_pieces();
+        }
+    }
+
+    /// used for promotion. only perform promotion if pawn exists at the position
+    pub fn replace_pawn(&mut self, position: u64, is_white: bool, new_piece: Piece) {
+        let pawns = if is_white {
+            self.white_pawns
+        } else {
+            self.black_pawns
+        };
+
+        if pawns & position != 0 {
+            match new_piece {
+                Piece::Knight => {
+                    if is_white {
+                        self.white_knights |= position;
+                    } else {
+                        self.black_knights |= position;
+                    }
+                }
+                Piece::Rook => {
+                    if is_white {
+                        self.white_rooks |= position;
+                    } else {
+                        self.black_rooks |= position;
+                    }
+                }
+                Piece::Bishop => {
+                    if is_white {
+                        self.white_bishops |= position;
+                    } else {
+                        self.black_bishops |= position;
+                    }
+                }
+                Piece::Queen => {
+                    if is_white {
+                        self.white_queens |= position;
+                    } else {
+                        self.black_queens |= position;
+                    }
+                }
+                _ => {
+                    return;
+                }
+            }
+            if is_white {
+                self.white_pawns ^= position;
+            } else {
+                self.black_pawns ^= position;
+            }
         }
     }
 
@@ -183,25 +245,21 @@ impl Default for Board {
         let white_pawns = 0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_00000000;
         let white_knights =
             0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01000010;
-        let white_rooks =
-            0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_10000001;
+        let white_rooks = 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_10000001;
         let white_bishops =
             0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00100100;
         let white_queens =
             0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001000;
-        let white_king =
-            0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00010000;
+        let white_king = 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00010000;
         let black_pawns = 0b00000000_11111111_00000000_00000000_00000000_00000000_00000000_00000000;
         let black_knights =
             0b01000010_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
-        let black_rooks =
-            0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
+        let black_rooks = 0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
         let black_bishops =
             0b00100100_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
         let black_queens =
             0b00001000_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
-        let black_king =
-            0b00010000_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
+        let black_king = 0b00010000_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
 
         Self::new(
             white_pawns,
@@ -572,6 +630,59 @@ pub mod tests {
         assert_eq!(
             None,
             board.get_piece_at(bitboard_single('a', 5).unwrap(), true)
+        );
+    }
+
+    #[test]
+    fn test_replace_piece() {
+        let white_pawns = PositionBuilder::new()
+            .add_piece('d', 8)
+            .add_piece('e', 8)
+            .build();
+        let white_queen = PositionBuilder::new().add_piece('a', 1).build();
+
+        let mut board = Board::new(white_pawns, 0, 0, 0, white_queen, 0, 0, 0, 0, 0, 0, 0);
+        assert_eq!(
+            PositionBuilder::new().add_piece('a', 1).build(),
+            board.white_queens
+        );
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('d', 8)
+                .add_piece('e', 8)
+                .build(),
+            board.white_pawns
+        );
+        assert_eq!(0, board.white_knights);
+
+        board.replace_pawn(bitboard_single('e', 8).unwrap(), true, Piece::Queen);
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('a', 1)
+                .add_piece('e', 8)
+                .build(),
+            board.white_queens
+        );
+        assert_eq!(
+            PositionBuilder::new().add_piece('d', 8).build(),
+            board.white_pawns
+        );
+        assert_eq!(0, board.white_knights);
+
+        board.replace_pawn(bitboard_single('d', 8).unwrap(), true, Piece::Knight);
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('a', 1)
+                .add_piece('e', 8)
+                .build(),
+            board.white_queens
+        );
+        assert_eq!(
+            0, board.white_pawns
+        );
+        assert_eq!(
+            PositionBuilder::new().add_piece('d', 8).build(),
+            board.white_knights
         );
     }
 }
