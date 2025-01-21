@@ -110,14 +110,14 @@ fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError>
                     potential_target_rank = rank.to_digit(10).unwrap() as u64;
                     state = PieceParserState::PotentialTargetParsed;
                 }
-                'x' => {
+                'x' if piece != Piece::King => {
                     source_file = Some(potential_target_file);
                     potential_target_file = ' ';
                     state = PieceParserState::SourceParsed;
                     is_capture = true;
                 }
-                // handling ambiguous
-                file @ 'a'..='h' => {
+                // handling ambiguous (exclude king)
+                file @ 'a'..='h' if piece != Piece::King => {
                     source_file = Some(potential_target_file);
                     potential_target_file = file;
                     state = PieceParserState::TargetFileParsed;
@@ -133,8 +133,8 @@ fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError>
                     state = PieceParserState::SourceParsed;
                     is_capture = true;
                 }
-                // handling ambiguous
-                file @ 'a'..='h' => {
+                // handling ambiguous (exclude king)
+                file @ 'a'..='h' if piece != Piece::King => {
                     source_rank = Some(potential_target_rank);
                     potential_target_file = file;
                     to = bitboard_single(potential_target_file, potential_target_rank).unwrap();
@@ -146,7 +146,7 @@ fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError>
 
             }
             PieceParserState::PotentialTargetParsed => match c {
-                'x' => {
+                'x' if piece != Piece::King => {
                     source_file = Some(potential_target_file);
                     source_rank = Some(potential_target_rank);
                     potential_target_file= ' ';
@@ -154,7 +154,7 @@ fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError>
                     state = PieceParserState::SourceParsed;
                     is_capture = true;
                 }
-                file@ 'a'..='h' => {
+                file@ 'a'..='h' if piece != Piece::King => {
                     source_file = Some(potential_target_file);
                     source_rank = Some(potential_target_rank);
                     potential_target_file = file;
@@ -705,6 +705,45 @@ pub mod tests {
         assert_eq!(
             Err(ParseError::InvalidTarget),
             parse_move("Qh8b2b")
+        );
+    }
+
+    #[test]
+    fn test_parse_king() {
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::King,
+                from_file: None,
+                from_rank: None,
+                to: bitboard_single('e', 2).unwrap(),
+                is_capture: false,
+                special_move: None,
+            },
+            parse_move("Ke2").unwrap()
+        );
+        assert_eq!(
+            ParsedMove {
+                piece: Piece::King,
+                from_file: None,
+                from_rank: None,
+                to: bitboard_single('e', 2).unwrap(),
+                is_capture: true,
+                special_move: None,
+            },
+            parse_move("Kxe2").unwrap()
+        );
+        // king ambiguity resolution is not allowed in PGN
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Kef2")
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Ke2e3")
+        );
+        assert_eq!(
+            Err(ParseError::InvalidTarget),
+            parse_move("Ke2xe3")
         );
     }
 
