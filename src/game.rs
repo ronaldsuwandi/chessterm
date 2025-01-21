@@ -1,8 +1,5 @@
-use crate::board::{is_rank, render_bitboard, Board};
-use crate::moves::{
-    compute_bishops_moves, compute_knights_moves, compute_pawns_moves, compute_rooks_moves,
-    resolve_knight_source, resolve_pawn_source,
-};
+use crate::board::{is_file, is_rank, render_bitboard, Board};
+use crate::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves, compute_queens_moves, compute_rooks_moves, resolve_bishop_source, resolve_king_source, resolve_knight_source, resolve_pawn_source, resolve_queen_source};
 use crate::parser::{parse_move, ParsedMove, Piece, SpecialMove};
 
 /// Game struct responsible for all game logics (pin, check, valid captures, etc)
@@ -59,20 +56,16 @@ impl Game {
                     self.process_piece(parsed_move, resolve_knight_source, Self::move_knight)
                 }
                 Piece::Bishop  => {
-                    // self.process_piece(parsed_move, resolve_bishop_source, Self::move_bishop)
-                    Ok(())
+                    self.process_piece(parsed_move, resolve_bishop_source, Self::move_bishop)
                 }
                 Piece::Queen => {
-                    // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
-                    Ok(())
+                    self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
                 }
                 Piece::Rook => {
-                     // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
-                    Ok(())
+                    self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
                 }
                 Piece::King => {
-                     // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
-                    Ok(())
+                    self.process_piece(parsed_move, resolve_king_source, Self::move_king)
                 }
                 Piece::Castling => {
                      // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
@@ -232,7 +225,7 @@ impl Game {
         true
     }
 
-    pub fn move_bishop(&mut self, from: u64, to: u64, is_capture: bool) -> bool {
+    pub fn move_bishop(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> bool {
         let is_white = self.is_white();
         let bishops = if is_white {
             self.board.white_bishops
@@ -245,12 +238,36 @@ impl Game {
             to,
             bishops,
             is_white,
-            is_capture,
+            parsed_move.is_capture,
             compute_bishops_moves,
         )
     }
 
-    pub fn move_rook(&mut self, from: u64, to: u64, is_capture: bool) -> bool {
+    pub fn move_king(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> bool {
+        let is_white = self.is_white();
+        let king = if is_white {
+            self.board.white_king
+        } else {
+            self.board.black_king
+        };
+
+        let moved = self.move_piece(
+            from,
+            to,
+            king,
+            is_white,
+            parsed_move.is_capture,
+            compute_king_moves,
+        );
+
+        if moved {
+            // TODO castling state update
+        }
+
+        moved
+    }
+
+    pub fn move_rook(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> bool {
         let is_white = self.is_white();
         let rooks = if is_white {
             self.board.white_rooks
@@ -258,7 +275,50 @@ impl Game {
             self.board.black_rooks
         };
 
-        self.move_piece(from, to, rooks, is_white, is_capture, compute_rooks_moves)
+        let moved = self.move_piece(
+            from,
+            to,
+            rooks,
+            is_white,
+            parsed_move.is_capture,
+            compute_rooks_moves,
+        );
+
+        if moved {
+            // TODO castling state update
+            // let
+
+            if is_white && (self.white_can_castle_kingside || self.white_can_castle_queenside) {
+                // disable castling if needed
+                if is_file(from, 'a') {
+
+                } else if is_file(from, 'h') {
+
+                }
+            } else if !is_white && (self.black_can_castle_kingside ||self.black_can_castle_queenside) {
+
+            }
+        }
+
+        moved
+    }
+
+    pub fn move_queen(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> bool {
+        let is_white = self.is_white();
+        let queens = if is_white {
+            self.board.white_queens
+        } else {
+            self.board.black_queens
+        };
+
+        self.move_piece(
+            from,
+            to,
+            queens,
+            is_white,
+            parsed_move.is_capture,
+            compute_queens_moves,
+        )
     }
 
     pub fn move_knight(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> bool {
@@ -528,6 +588,28 @@ pub mod tests {
         assert!(game.process_move("N3e5").is_ok());
         assert!(game.process_move("Nb8a6").is_ok());
         assert!(game.process_move("Ne5xc4").is_ok());
+    }
+
+
+    #[test]
+    fn test_basic_moves() {
+        let mut game = Game::default();
+        assert!(game.process_move("e4").is_ok());
+        assert!(game.process_move("e5").is_ok());
+        assert!(game.process_move("e5").is_err()); // blocked by opponent
+        assert!(game.process_move("Bb5").is_ok());
+        assert!(game.process_move("Nf6").is_ok());
+        assert!(game.process_move("Rb1").is_err()); // blocked by own piece
+        assert!(game.process_move("Qe2").is_ok());
+        assert!(game.process_move("Nxe4").is_ok());
+        assert!(game.process_move("d4").is_ok());
+        assert!(game.process_move("exd4").is_ok());
+        assert!(game.process_move("Qe3").is_ok());
+        assert!(game.process_move("dxe3").is_ok());
+        assert!(game.process_move("Nf3").is_ok());
+        assert!(game.process_move("exf2").is_ok());
+        assert!(game.process_move("Kd1").is_ok());
+        assert!(game.process_move("f1=Q").is_ok());
     }
 
     // #[test]
