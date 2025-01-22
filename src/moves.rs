@@ -1,4 +1,4 @@
-use crate::board::{bitboard_single, is_file, is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H, MASK_RANK_2, MASK_RANK_7};
+use crate::board::{bitboard_single, is_file, is_rank, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H, MASK_RANK_2, MASK_RANK_7};
 use crate::parser::ParsedMove;
 use crate::precompute_moves;
 // move generation related, only generate pseudo-legal moves
@@ -423,7 +423,7 @@ const fn precompute_king_moves(index: u8) -> u64 {
 pub fn compute_king_moves(board: &Board, is_white: bool) -> u64 {
     let mut moves = 0u64;
     let own_pieces: u64;
-    let mut king: u64;
+    let king: u64;
     if is_white {
         king = board.white_king;
         own_pieces = board.white_pieces;

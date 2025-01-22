@@ -50,8 +50,6 @@
 //     Ok(())
 // }
 
-use std::error::Error;
-use crate::board::bitboard_single;
 use crate::game::{Game, MoveError};
 
 mod board;

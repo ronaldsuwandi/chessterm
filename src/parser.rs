@@ -1,4 +1,4 @@
-use crate::board::{bitboard_single, Board};
+use crate::board::bitboard_single;
 use std::str::Chars;
 
 #[derive(Debug, PartialEq)]
@@ -214,7 +214,7 @@ fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError>
 }
 
 fn parse_castling(cmd: &str) -> Result<ParsedMove, ParseError> {
-    let mut special_move: Option<SpecialMove>;
+    let special_move: Option<SpecialMove>;
     if cmd.eq("O-O") {
         special_move = Some(SpecialMove::CastlingKing);
     } else if cmd.eq("O-O-O") {
@@ -343,11 +343,6 @@ fn parse_source(c: char) -> Result<Piece, ParseError> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_move() {
-        let board = Board::default();
-    }
 
     #[test]
     fn test_parse_pawn_basic_moves() {
