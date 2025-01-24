@@ -17,7 +17,9 @@ pub struct Game {
     pub white_can_castle_queenside: bool,
     pub black_can_castle_kingside: bool,
     pub black_can_castle_queenside: bool,
+
     // check
+    pub check: bool,
 
     // pin
     pub pinned_white: u64,
@@ -45,6 +47,7 @@ impl Game {
             black_can_castle_kingside: true,
             black_can_castle_queenside: true,
 
+            check: false,
             pinned_white: 0,
             pinned_black: 0,
         }
@@ -56,25 +59,57 @@ impl Game {
 
     pub fn process_move(&mut self, cmd: &str) -> Result<(), MoveError> {
         if let Ok(parsed_move) = parse_move(cmd) {
+            let is_white = self.is_white();
+            let pieces;
             match parsed_move.piece {
                 Piece::Pawn => {
+                    pieces = if is_white {
+                        self.board.white_pawns
+                    } else {
+                        self.board.black_pawns
+                    };
                     // special case for pawns
-                    self.process_pawn(parsed_move)?
+                    self.process_pawn(parsed_move, pieces, is_white)?
                 }
                 Piece::Knight => {
-                    self.process_piece(parsed_move, resolve_knight_source, Self::move_knight)?
+                    pieces = if is_white {
+                        self.board.white_knights
+                    } else {
+                        self.board.black_knights
+                    };
+                    self.process_piece(parsed_move, pieces, is_white, resolve_knight_source, compute_knights_moves)?
                 }
                 Piece::Bishop => {
-                    self.process_piece(parsed_move, resolve_bishop_source, Self::move_bishop)?
+                    pieces = if is_white {
+                        self.board.white_bishops
+                    } else {
+                        self.board.black_bishops
+                    };
+                    self.process_piece(parsed_move, pieces, is_white, resolve_bishop_source, compute_bishops_moves)?
                 }
                 Piece::Queen => {
-                    self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)?
+                    pieces = if is_white {
+                        self.board.white_queens
+                    } else {
+                        self.board.black_queens
+                    };
+                    self.process_piece(parsed_move, pieces, is_white, resolve_queen_source, compute_queens_moves)?
                 }
                 Piece::Rook => {
-                    self.process_piece(parsed_move, resolve_rook_source, Self::move_rook)?
+                    pieces = if is_white {
+                        self.board.white_rooks
+                    } else {
+                        self.board.black_rooks
+                    };
+                    self.process_piece(parsed_move, pieces, is_white, resolve_rook_source, compute_rooks_moves)?
                 }
                 Piece::King => {
-                    self.process_piece(parsed_move, resolve_king_source, Self::move_king)?
+                    pieces = if is_white {
+                        self.board.white_king
+                    } else {
+                        self.board.black_king
+                    };
+                    self.process_piece(parsed_move, pieces, is_white, resolve_king_source, compute_king_moves)?
                 }
                 Piece::Castling => {
                     // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
@@ -86,6 +121,7 @@ impl Game {
 
             // update pins for the opponent
             self.update_pinned_state();
+            self.update_check_state();
 
             Ok(())
         } else {
@@ -93,30 +129,51 @@ impl Game {
         }
     }
 
-    fn process_pawn(&mut self, mv: ParsedMove) -> Result<(), MoveError> {
+    fn process_pawn(&mut self, mv: ParsedMove, pawns: u64, is_white: bool) -> Result<(), MoveError> {
         let to = mv.to;
         let from = resolve_pawn_source(&self.board, &mv, self.is_white());
 
         if !self.validate_pawn_move(from, to, &mv, self.is_white()) {
             return Err(MoveError::InvalidMove);
         }
-        self.move_pawn(from, to, mv)
+
+        self.validate_move_piece(from, to, pawns, is_white, mv.is_capture, &compute_pawns_moves)?;
+        self.move_piece(
+            from,
+            to,
+            is_white,
+            mv.is_capture
+        )?;
+
+        if let Some(SpecialMove::Promotion(piece)) = mv.special_move {
+            self.board.replace_pawn(to, is_white, piece);
+        }
+        Ok(())
     }
 
     fn process_piece<F, G>(
         &mut self,
         mv: ParsedMove,
+        pieces: u64,
+        is_white: bool,
         source_resolver_fn: F,
-        move_fn: G,
+        compute_move_fn: G,
     ) -> Result<(), MoveError>
     where
         F: Fn(&Board, &ParsedMove, bool) -> u64,
-        G: Fn(&mut Self, u64, u64, ParsedMove) -> Result<(), MoveError>,
+        G: Fn(&Board, bool) -> u64,
     {
         let to = mv.to;
         let from = source_resolver_fn(&self.board, &mv, self.is_white());
 
-        move_fn(self, from, to, mv)
+        self.validate_move_piece(from, to, pieces, is_white, mv.is_capture, compute_move_fn)?;
+        self.move_piece(from, to, is_white, mv.is_capture)
+    }
+
+    fn process_promotion(board: &mut Board, mv: ParsedMove, is_white: bool) {
+       if let Some(SpecialMove::Promotion(piece)) = mv.special_move {
+            board.replace_pawn(mv.to, is_white, piece);
+       }
     }
 
     // pawn specific move validation (diagonal capture, promotion, etc)
@@ -149,7 +206,13 @@ impl Game {
         true
     }
 
-    fn validate_move_pinned_piece(&self, from: u64, to: u64, pinned_pieces: u64, is_white: bool) -> bool {
+    fn validate_move_pinned_piece(
+        &self,
+        from: u64,
+        to: u64,
+        pinned_pieces: u64,
+        is_white: bool,
+    ) -> bool {
         let king = if is_white {
             self.board.white_king
         } else {
@@ -170,6 +233,11 @@ impl Game {
             }
         }
         false
+    }
+
+    fn validate_move_check() -> bool {
+        // TODO do this
+        true
     }
 
     fn validate_move_piece<F>(
@@ -231,23 +299,24 @@ impl Game {
             println!("Target must be captured, not moved");
             return Err(MoveError::InvalidMove);
         }
+
+        // test for check
+        if Self::is_in_check(&self.board, is_white) {
+
+        }
+
         Ok(())
     }
 
-    fn move_piece<F>(
+    fn move_piece(
         &mut self,
         from: u64,
         to: u64,
-        pieces: u64,
         is_white: bool,
         is_capture: bool,
-        compute_moves: F,
     ) -> Result<(), MoveError>
     where
-        F: Fn(&Board, bool) -> u64,
     {
-        self.validate_move_piece(from, to, pieces, is_white, is_capture, &compute_moves)?;
-
         if is_capture {
             self.board.move_piece(from, to, is_white);
             self.board.remove_piece(to, !is_white);
@@ -274,10 +343,8 @@ impl Game {
         self.move_piece(
             from,
             to,
-            bishops,
             is_white,
             parsed_move.is_capture,
-            compute_bishops_moves,
         )
     }
 
@@ -292,10 +359,8 @@ impl Game {
         self.move_piece(
             from,
             to,
-            king,
             is_white,
             parsed_move.is_capture,
-            compute_king_moves,
         )?;
 
         // TODO castling state update
@@ -313,10 +378,8 @@ impl Game {
         self.move_piece(
             from,
             to,
-            rooks,
             is_white,
             parsed_move.is_capture,
-            compute_rooks_moves,
         )?;
 
         // TODO castling state update
@@ -344,10 +407,8 @@ impl Game {
         self.move_piece(
             from,
             to,
-            queens,
             is_white,
             parsed_move.is_capture,
-            compute_queens_moves,
         )
     }
 
@@ -367,34 +428,9 @@ impl Game {
         self.move_piece(
             from,
             to,
-            knights,
             is_white,
             parsed_move.is_capture,
-            compute_knights_moves,
         )
-    }
-
-    fn move_pawn(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> Result<(), MoveError> {
-        let is_white = self.is_white();
-        let pawns = if is_white {
-            self.board.white_pawns
-        } else {
-            self.board.black_pawns
-        };
-
-        self.move_piece(
-            from,
-            to,
-            pawns,
-            is_white,
-            parsed_move.is_capture,
-            compute_pawns_moves,
-        )?;
-
-        if let Some(SpecialMove::Promotion(piece)) = parsed_move.special_move {
-            self.board.replace_pawn(to, is_white, piece);
-        }
-        Ok(())
     }
 
     // TODO implement parse move and game logic for check
@@ -406,7 +442,7 @@ impl Game {
         self.pinned_black = Self::detect_pins(&self.board, false);
     }
 
-fn detect_pins(board: &Board, is_white: bool) -> u64 {
+    fn detect_pins(board: &Board, is_white: bool) -> u64 {
         let king = if is_white {
             board.white_king
         } else {
@@ -425,7 +461,6 @@ fn detect_pins(board: &Board, is_white: bool) -> u64 {
             | compute_bishops_moves(board, !is_white)
             | compute_queens_moves(board, !is_white);
 
-
         let opponent_sliding_pieces = if is_white {
             board.black_rooks | board.black_bishops | board.black_queens
         } else {
@@ -442,73 +477,89 @@ fn detect_pins(board: &Board, is_white: bool) -> u64 {
             let ray = QUEEN_RAYS[king_idx as usize][direction_from_king];
             let blockers = ray & own_pieces;
 
-            // pin only happen if there's 1 own piece blocking a ray
-            if blockers.count_ones() == 1 {
-                let blocker = blockers.trailing_zeros();
-                let blocker_bit = 1u64 << blocker;
+            // pin only happens there is only 1 piece blocking a ray
+            if blockers.count_ones() != 1 {
+                continue;
+            }
 
-                // found potential pin that can be attacked
-                if opponent_sliding_moves & blocker_bit != 0 {
-                    // find the attacker piece
-                    let mut pinned= false;
+            let blocker = blockers.trailing_zeros();
+            let blocker_bit = 1u64 << blocker;
 
-                    let mut pieces = opponent_sliding_pieces;
-                    while pieces != 0 {
-                        let piece_idx = pieces.trailing_zeros() as usize;
+            // found potential pin that can be attacked
+            if opponent_sliding_moves & blocker_bit != 0 {
+                // find the attacker piece
+                let mut pinned = false;
 
-                        let opponent_ray = QUEEN_RAYS[piece_idx][direction_to_king];
+                let mut pieces = opponent_sliding_pieces;
+                while pieces != 0 {
+                    let piece_idx = pieces.trailing_zeros() as usize;
 
-                        // ray targeting king will hit the king
-                        if opponent_ray & king != 0 {
-                            // check opponent moves only at the ray direction
-                            let opponent_ray_to_blocker;
-                            // includes blocker bit in the ray to the blocker
-                            if direction_to_king == 0 || direction_to_king == 1 || direction_to_king == 2 || direction_to_king == 7 {
-                                opponent_ray_to_blocker = blocker_bit | opponent_ray & !(u64::MAX << blocker);
-                            } else {
-                                opponent_ray_to_blocker = blocker_bit | opponent_ray & (u64::MAX << blocker + 1);
-                            };
+                    let opponent_ray = QUEEN_RAYS[piece_idx][direction_to_king];
 
-                            /*
-                            conditions:
-                            1. only 1 piece blocking ray of attack FROM king
-                            2. blocking piece can be hit from sliding pieces from opponents
-                            3. opponent RAY of attack can reach king
-                            4. opponent legal move can hit blocking piece and share the same oppoenent RAY line
-                             */
+                    // ray targeting king will hit the king
+                    if opponent_ray & king != 0 {
+                        // check opponent moves only at the ray direction
+                        let opponent_ray_to_blocker;
+                        // includes blocker bit in the ray to the blocker
+                        if direction_to_king == 0
+                            || direction_to_king == 1
+                            || direction_to_king == 2
+                            || direction_to_king == 7
+                        {
+                            opponent_ray_to_blocker =
+                                blocker_bit | opponent_ray & !(u64::MAX << blocker);
+                        } else {
+                            opponent_ray_to_blocker =
+                                blocker_bit | opponent_ray & (u64::MAX << blocker + 1);
+                        };
 
-                            // pin only if the moves from the piece overlap to the opponent ray to the blocker
-                            pinned = opponent_sliding_moves & opponent_ray_to_blocker == opponent_ray_to_blocker;
-                            if pinned {
-                                break;
-                            }
+                        /*
+                        conditions:
+                        1. only 1 piece blocking ray of attack FROM king
+                        2. blocking piece can be hit from sliding pieces from opponents
+                        3. opponent RAY of attack can reach king
+                        4. opponent legal move can hit blocking piece and share the same oppoenent RAY line
+                         */
+
+                        // pin only if the moves from the piece overlap to the opponent ray to the blocker
+                        pinned = opponent_sliding_moves & opponent_ray_to_blocker
+                            == opponent_ray_to_blocker;
+                        if pinned {
+                            break;
                         }
-
-                        // Remove the processed piece (use lsb approach)
-                        pieces &= pieces - 1;
                     }
 
-                    if pinned {
-                        pinned_pieces |= blocker_bit;
-                    }
+                    // Remove the processed piece (use lsb approach)
+                    pieces &= pieces - 1;
+                }
+
+                if pinned {
+                    pinned_pieces |= blocker_bit;
                 }
             }
         }
         pinned_pieces
     }
 
-    // check handler
-    fn is_checked(&self) -> bool {
-        let is_white = self.is_white();
+    fn update_check_state(&mut self) {
+        self.check = Self::is_in_check(&self.board, self.is_white());
+    }
+
+    // check if king is in check
+    fn is_in_check(board: &Board, is_white: bool) -> bool {
         let king = if is_white {
-            self.board.white_king
+            board.white_king
         } else {
-            self.board.black_king
+            board.black_king
         };
 
-        let mut attackers = 0u64;
+        let opponent_attacks = compute_knights_moves(&board, !is_white)
+            | compute_rooks_moves(&board, !is_white)
+            | compute_bishops_moves(&board, !is_white)
+            | compute_queens_moves(&board, !is_white)
+            | compute_pawns_moves(&board, !is_white);
 
-        true
+        king & opponent_attacks != 0
     }
 }
 
@@ -866,7 +917,6 @@ pub mod tests {
         assert_eq!(0, game.pinned_black);
     }
 
-
     #[test]
     fn test_pinned_sliding_both() {
         let board = Board::new(
@@ -928,7 +978,6 @@ pub mod tests {
         // black queen is now pinned
         assert_eq!(0, game.pinned_white);
         assert_eq!(bitboard_single('c', 5).unwrap(), game.pinned_black);
-
     }
 
     #[test]
@@ -1005,6 +1054,64 @@ pub mod tests {
         assert_eq!(0, game.pinned_black);
     }
 
+    #[test]
+    fn test_check_state() {
+        let board = Board::new(
+            0,
+            0,
+            0,
+            bitboard_single('d', 2).unwrap(),
+            0,
+            bitboard_single('e', 1).unwrap(),
+            0,
+            0,
+            bitboard_single('e', 6).unwrap(),
+            bitboard_single('e', 5).unwrap(),
+            0,
+            bitboard_single('d', 8).unwrap(),
+        );
+
+        let mut game = Game::new(board);
+        game.turn = 2; // black's turn
+        assert!(!Game::is_in_check(&game.board, game.is_white()));
+        // discovered check
+        assert!(game.process_move("Bg3").is_ok());
+        // white is checked
+        assert!(Game::is_in_check(&game.board, game.is_white()));
+        // white move
+        assert!(game.process_move("Kd1").is_ok());
+        // black is not checked
+        assert!(!Game::is_in_check(&game.board, game.is_white()));
+        // black move
+        assert!(game.process_move("Kd7").is_ok());
+        // white is not checked
+        assert!(!Game::is_in_check(&game.board, game.is_white()));
+    }
+
+    // #[test]
+    // fn test_check_attackers() {
+    //     let black_knights: u64 = PositionBuilder::new().add_piece('f', 6).build();
+    //     let board = Board::new(
+    //         0,
+    //         0,
+    //         0,
+    //         0,
+    //         0,
+    //         bitboard_single('e', 4).unwrap(),
+    //         0,
+    //         black_knights,
+    //         0,
+    //         0,
+    //         0,
+    //         bitboard_single('d', 7).unwrap(),
+    //     );
+    //
+    //     let mut game = Game::new(board);
+    //     game.turn = 3; // white's turn
+    //     assert_eq!(
+    //         bitboard_single('f', 6).unwrap(),
+    //         game.check_attackers());
+    // }
 
     // #[test]
     // fn test_parse_castling() {

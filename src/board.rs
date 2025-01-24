@@ -1,6 +1,6 @@
 use crate::parser::Piece;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Board {
     pub white_pawns: u64,
     pub white_knights: u64,
