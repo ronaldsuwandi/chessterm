@@ -30,7 +30,7 @@ pub struct Game {
     pub status: Status,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum MoveError {
     AmbiguousSource,
     InvalidMove,
@@ -378,8 +378,7 @@ impl Game {
         is_white: bool,
         is_capture: bool,
     ) -> Result<(), MoveError>
-    where
-    {
+where {
         if is_capture {
             self.board.move_piece(from, to, is_white);
             self.board.remove_piece(to, !is_white);
@@ -435,8 +434,11 @@ impl Game {
 
         if is_white && (self.white_can_castle_kingside || self.white_can_castle_queenside) {
             // disable castling if needed
-            if is_file(from, 'a') {} else if is_file(from, 'h') {}
-        } else if !is_white && (self.black_can_castle_kingside || self.black_can_castle_queenside) {}
+            if is_file(from, 'a') {
+            } else if is_file(from, 'h') {
+            }
+        } else if !is_white && (self.black_can_castle_kingside || self.black_can_castle_queenside) {
+        }
 
         Ok(())
     }
@@ -605,8 +607,6 @@ impl Game {
         opponent_pieces: u64,
         opponent_king: u64,
     ) -> bool {
-        let simulated_board = self.board.clone();
-
         while pieces != 0 {
             let piece_idx = pieces.trailing_zeros() as u64;
             let piece_pos = 1 << piece_idx;
@@ -615,9 +615,6 @@ impl Game {
                 let move_idx = pseudolegal_moves.trailing_zeros() as u64;
                 let single_move = 1 << move_idx;
 
-                println!("MOVEIDX");
-                render_bitboard(&single_move, 'm');
-                render_bitboard(&piece_pos, 'P');
                 let is_capture = move_idx & opponent_pieces != 0;
 
                 if self
@@ -631,7 +628,6 @@ impl Game {
                     )
                     .is_ok()
                 {
-                    println!("AAAH");
                     return true;
                 }
 
@@ -663,28 +659,22 @@ impl Game {
         let white_bishops = board.white_bishops.count_ones();
         let black_bishops = board.black_bishops.count_ones();
 
-        if (white_knights == 0 && black_knights == 0 && white_bishops == 0 && black_bishops == 0) ||
+        let insufficient = matches!(
+            (white_knights, black_knights, white_bishops, black_bishops),
+            (0, 0, 0, 0)
+                | (1, 0, 0, 0)
+                | (0, 1, 0, 0)
+                | (0, 0, 1, 0)
+                | (0, 0, 0, 1)
+                | (1, 1, 0, 0)
+                | (0, 0, 1, 1)
+                | (1, 0, 0, 1)
+                | (0, 1, 1, 0)
+                | (0, 2, 0, 0)
+                | (2, 0, 0, 0)
+        );
 
-            // 1 knight only or 1 bishop only
-            (white_knights == 1 && black_knights == 0 && white_bishops == 0 && black_bishops == 0) ||
-            (white_knights == 0 && black_knights == 1 && white_bishops == 0 && black_bishops == 0) ||
-            (white_knights == 0 && black_knights == 0 && white_bishops == 1 && black_bishops == 0) ||
-            (white_knights == 0 && black_knights == 0 && white_bishops == 0 && black_bishops == 1) ||
-
-            (white_knights == 1 && black_knights == 1 && white_bishops == 0 && black_bishops == 0) || // 1 bishop each side only
-            (white_knights == 0 && black_knights == 0 && white_bishops == 1 && black_bishops == 1) ||
-
-            (white_knights == 1 && black_knights == 0 && white_bishops == 0 && black_bishops == 1) ||
-            (white_knights == 0 && black_knights == 1 && white_bishops == 1 && black_bishops == 0) ||
-
-            // 2 knights on 1 side only
-            (white_knights == 0 && black_knights == 2 && white_bishops == 0 && black_bishops == 0) ||
-            (white_knights == 2 && black_knights == 0 && white_bishops == 0 && black_bishops == 0)
-        {
-            return false;
-        }
-
-        true
+        !insufficient
     }
 
     fn evaluate_game_status(&mut self) {
@@ -754,26 +744,26 @@ impl Game {
                 opponent_king,
             ) || self.has_valid_move(rooks, rooks_moves, is_white, opponent_pieces, opponent_king)
                 || self.has_valid_move(
-                bishops,
-                bishops_moves,
-                is_white,
-                opponent_pieces,
-                opponent_king,
-            )
+                    bishops,
+                    bishops_moves,
+                    is_white,
+                    opponent_pieces,
+                    opponent_king,
+                )
                 || self.has_valid_move(
-                queens,
-                queens_moves,
-                is_white,
-                opponent_pieces,
-                opponent_king,
-            )
+                    queens,
+                    queens_moves,
+                    is_white,
+                    opponent_pieces,
+                    opponent_king,
+                )
                 || self.has_valid_move(
-                pawns,
-                pawns_moves,
-                is_white,
-                opponent_pieces,
-                opponent_king,
-            )
+                    pawns,
+                    pawns_moves,
+                    is_white,
+                    opponent_pieces,
+                    opponent_king,
+                )
                 || self.has_valid_move(king, king_moves, is_white, opponent_pieces, opponent_king);
 
         if found_legal_move {
@@ -800,6 +790,22 @@ impl Default for Game {
 pub mod tests {
     use super::*;
     use crate::board::{bit_pos, bitboard_single, render_bitboard, Board, PositionBuilder};
+
+    fn process_moves(game: &mut Game, moves: &[&str]) {
+        for &mv in moves {
+            assert!(game.process_move(mv).is_ok());
+        }
+    }
+
+    fn process_moves_detailed(game: &mut Game, moves: &[(&str, Option<MoveError>)]) {
+        for &(mv, move_error) in moves {
+            if let Some(move_error) = move_error {
+                assert_eq!(Err(move_error), game.process_move(mv));
+            } else {
+                assert!(game.process_move(mv).is_ok());
+            }
+        }
+    }
 
     #[test]
     fn test_validate_pawn_move() {
@@ -878,16 +884,19 @@ pub mod tests {
         );
         let mut game = Game::new(board);
 
-        // e3 is blocked by white piece
-        assert!(game.process_move("e3").is_err());
-        // g3 is blocked by black piece
-        assert!(game.process_move("g3").is_err());
-        // can't skip g3 because there's a black piece
-        assert!(game.process_move("g4").is_err());
-        assert!(game.process_move("h3").is_ok());
-
-        // black can move a5 next
-        assert!(game.process_move("a5").is_ok());
+        process_moves_detailed(
+            &mut game,
+            &[
+                // e3 is blocked by white piece
+                ("e3", Some(MoveError::InvalidMove)),
+                // g3 is blocked by black piece
+                ("g3", Some(MoveError::InvalidMove)),
+                // can't skip g3 because there's a black piece
+                ("g4", Some(MoveError::InvalidMove)),
+                ("h3", None),
+                ("a5", None),
+            ],
+        );
     }
 
     #[test]
@@ -983,7 +992,7 @@ pub mod tests {
         // promotion doesn't work if not rank 8 for white
         assert!(game.process_move("a3=R").is_err());
         game.turn = 4; // switch to black
-        // promotion doesn't work if not rank 1 for black
+                       // promotion doesn't work if not rank 1 for black
         assert!(game.process_move("a6=R").is_err());
     }
 
@@ -1042,22 +1051,44 @@ pub mod tests {
     #[test]
     fn test_basic_moves() {
         let mut game = Game::default();
-        assert!(game.process_move("e4").is_ok());
-        assert!(game.process_move("e5").is_ok());
-        assert!(game.process_move("e5").is_err()); // blocked by opponent
-        assert!(game.process_move("Bb5").is_ok());
-        assert!(game.process_move("Nf6").is_ok());
-        assert!(game.process_move("Rb1").is_err()); // blocked by own piece
-        assert!(game.process_move("Qe2").is_ok());
-        assert!(game.process_move("Nxe4").is_ok());
-        assert!(game.process_move("d4").is_ok());
-        assert!(game.process_move("exd4").is_ok());
-        assert!(game.process_move("Qe3").is_ok());
-        assert!(game.process_move("dxe3").is_ok());
-        assert!(game.process_move("Nf3").is_ok());
-        assert!(game.process_move("exf2").is_ok());
-        assert!(game.process_move("Kd1").is_ok());
-        assert!(game.process_move("f1=Q").is_ok());
+        process_moves_detailed(
+            &mut game,
+            &[
+                ("e4", None),
+                ("e5", None),
+                ("e5", Some(MoveError::InvalidMove)), // blocked by opponent
+                ("Bb5", None),
+                ("Nf6", None),
+                ("Rb1", Some(MoveError::AmbiguousSource)), // ambiguous
+                ("Rab1", Some(MoveError::InvalidMove)), // blocked by own piece and ambiguous
+                ("Qe2", None),
+                ("Nxe4", None),
+                ("d4", None),
+                ("exd4", None),
+                ("Qe3", None),
+                ("dxe3", None),
+                ("Nf3", None),
+                ("exf2", None),
+                ("Kd1", None),
+                ("f1=Q", None),
+            ],
+        );
+        // assert!(game.process_move("e4").is_ok());
+        // assert!(game.process_move("e5").is_ok());
+        // assert!(game.process_move("e5").is_err()); // blocked by opponent
+        // assert!(game.process_move("Bb5").is_ok());
+        // assert!(game.process_move("Nf6").is_ok());
+        // assert!(game.process_move("Rb1").is_err()); // blocked by own piece
+        // assert!(game.process_move("Qe2").is_ok());
+        // assert!(game.process_move("Nxe4").is_ok());
+        // assert!(game.process_move("d4").is_ok());
+        // assert!(game.process_move("exd4").is_ok());
+        // assert!(game.process_move("Qe3").is_ok());
+        // assert!(game.process_move("dxe3").is_ok());
+        // assert!(game.process_move("Nf3").is_ok());
+        // assert!(game.process_move("exf2").is_ok());
+        // assert!(game.process_move("Kd1").is_ok());
+        // assert!(game.process_move("f1=Q").is_ok());
     }
 
     #[test]
@@ -1471,7 +1502,7 @@ pub mod tests {
 
         let board = Board::new(
             0,
-            bitboard_single('d',1).unwrap(),
+            bitboard_single('d', 1).unwrap(),
             0,
             0,
             0,

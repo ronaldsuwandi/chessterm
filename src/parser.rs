@@ -143,18 +143,17 @@ fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError>
                 _ => {
                     return Err(ParseError::InvalidTarget);
                 }
-
-            }
+            },
             PieceParserState::PotentialTargetParsed => match c {
                 'x' if piece != Piece::King => {
                     source_file = Some(potential_target_file);
                     source_rank = Some(potential_target_rank);
-                    potential_target_file= ' ';
+                    potential_target_file = ' ';
                     potential_target_rank = 0;
                     state = PieceParserState::SourceParsed;
                     is_capture = true;
                 }
-                file@ 'a'..='h' if piece != Piece::King => {
+                file @ 'a'..='h' if piece != Piece::King => {
                     source_file = Some(potential_target_file);
                     source_rank = Some(potential_target_rank);
                     potential_target_file = file;
@@ -164,7 +163,7 @@ fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError>
                 _ => {
                     return Err(ParseError::InvalidTarget);
                 }
-            }
+            },
 
             PieceParserState::SourceParsed => match c {
                 file @ 'a'..='h' => {
@@ -184,10 +183,10 @@ fn parse_piece(piece: Piece, mut chars: Chars) -> Result<ParsedMove, ParseError>
                 _ => {
                     return Err(ParseError::InvalidTarget);
                 }
-            }
-            PieceParserState::TargetParsed => return match c {
-                _ => {
-                    Err(ParseError::InvalidTarget)
+            },
+            PieceParserState::TargetParsed => {
+                return match c {
+                    _ => Err(ParseError::InvalidTarget),
                 }
             }
         }
@@ -395,11 +394,8 @@ pub mod tests {
         );
 
         assert_eq!(Err(ParseError::InvalidSource), parse_move("x5"));
-
         assert_eq!(Err(ParseError::InvalidTarget), parse_move("e9"));
-
         assert_eq!(Err(ParseError::InvalidTarget), parse_move("e0"));
-
         assert_eq!(Err(ParseError::InvalidLength), parse_move("a"));
     }
 
@@ -496,7 +492,6 @@ pub mod tests {
         );
 
         assert_eq!(Err(ParseError::InvalidTarget), parse_move("h8="));
-
         assert_eq!(Err(ParseError::InvalidTarget), parse_move("h8=O"));
     }
 
@@ -584,22 +579,10 @@ pub mod tests {
             },
             parse_move("Ke1").unwrap()
         );
-        assert_eq!(
-            Err(ParseError::InvalidSource),
-            parse_move("Je1")
-        );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Nz9")
-        );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Ne")
-        );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("N1")
-        );
+        assert_eq!(Err(ParseError::InvalidSource), parse_move("Je1"));
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Nz9"));
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Ne"));
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("N1"));
     }
 
     #[test]
@@ -615,18 +598,9 @@ pub mod tests {
             },
             parse_move("Qxb2").unwrap()
         );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Qxxb2")
-        );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Qx2")
-        );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Qxe")
-        );
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Qxxb2"));
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Qx2"));
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Qxe"));
     }
 
     #[test]
@@ -697,10 +671,7 @@ pub mod tests {
             },
             parse_move("Qh8xb2").unwrap()
         );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Qh8b2b")
-        );
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Qh8b2b"));
     }
 
     #[test]
@@ -728,18 +699,9 @@ pub mod tests {
             parse_move("Kxe2").unwrap()
         );
         // king ambiguity resolution is not allowed in PGN
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Kef2")
-        );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Ke2e3")
-        );
-        assert_eq!(
-            Err(ParseError::InvalidTarget),
-            parse_move("Ke2xe3")
-        );
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Kef2"));
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Ke2e3"));
+        assert_eq!(Err(ParseError::InvalidTarget), parse_move("Ke2xe3"));
     }
 
     #[test]
