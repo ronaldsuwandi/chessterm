@@ -490,7 +490,7 @@ pub fn resolve_knight_source(board: &Board, parsed_move: &ParsedMove, is_white: 
                     continue;
                 }
             }
-            if let Some(from_rank) =parsed_move.from_rank {
+            if let Some(from_rank) = parsed_move.from_rank {
                 if !is_rank(knight_position, from_rank) {
                     continue;
                 }

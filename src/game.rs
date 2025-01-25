@@ -27,6 +27,7 @@ pub struct Game {
     // en passant
 
     // end game (checkmate, draw)
+    pub status: Status,
 }
 
 #[derive(Debug, PartialEq)]
@@ -36,6 +37,13 @@ pub enum MoveError {
     Pinned,
     Checked,
     ParseError,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Status {
+    Ongoing,
+    Draw,
+    Checkmate,
 }
 
 impl Game {
@@ -51,6 +59,8 @@ impl Game {
             check: false,
             pinned_white: 0,
             pinned_black: 0,
+
+            status: Status::Ongoing,
         }
     }
 
@@ -154,6 +164,7 @@ impl Game {
             self.update_pinned_state();
             self.update_check_state();
 
+            self.evaluate_game_status();
             Ok(())
         } else {
             Err(MoveError::ParseError)
@@ -339,6 +350,16 @@ impl Game {
             return Err(MoveError::InvalidMove);
         }
 
+        let opponent_king = if is_white {
+            self.board.black_king
+        } else {
+            self.board.white_king
+        };
+        if is_capture && (to & opponent_king != 0) {
+            println!("King cannot be captured");
+            return Err(MoveError::InvalidMove);
+        }
+
         // test for check
         if Self::is_in_check(&self.board, is_white) {
             if self.validate_move_check(from, to, is_white) {
@@ -357,7 +378,8 @@ impl Game {
         is_white: bool,
         is_capture: bool,
     ) -> Result<(), MoveError>
-where {
+    where
+    {
         if is_capture {
             self.board.move_piece(from, to, is_white);
             self.board.remove_piece(to, !is_white);
@@ -413,11 +435,8 @@ where {
 
         if is_white && (self.white_can_castle_kingside || self.white_can_castle_queenside) {
             // disable castling if needed
-            if is_file(from, 'a') {
-            } else if is_file(from, 'h') {
-            }
-        } else if !is_white && (self.black_can_castle_kingside || self.black_can_castle_queenside) {
-        }
+            if is_file(from, 'a') {} else if is_file(from, 'h') {}
+        } else if !is_white && (self.black_can_castle_kingside || self.black_can_castle_queenside) {}
 
         Ok(())
     }
@@ -576,6 +595,198 @@ where {
             | compute_pawns_moves(&board, !is_white);
 
         king & opponent_attacks != 0
+    }
+
+    fn has_valid_move(
+        &self,
+        mut pieces: u64,
+        mut pseudolegal_moves: u64,
+        is_white: bool,
+        opponent_pieces: u64,
+        opponent_king: u64,
+    ) -> bool {
+        let simulated_board = self.board.clone();
+
+        while pieces != 0 {
+            let piece_idx = pieces.trailing_zeros() as u64;
+            let piece_pos = 1 << piece_idx;
+
+            while pseudolegal_moves != 0 {
+                let move_idx = pseudolegal_moves.trailing_zeros() as u64;
+                let single_move = 1 << move_idx;
+
+                println!("MOVEIDX");
+                render_bitboard(&single_move, 'm');
+                render_bitboard(&piece_pos, 'P');
+                let is_capture = move_idx & opponent_pieces != 0;
+
+                if self
+                    .validate_move_piece(
+                        piece_pos,
+                        single_move,
+                        piece_pos,
+                        is_white,
+                        is_capture,
+                        |_: &Board, _: bool| -> u64 { single_move },
+                    )
+                    .is_ok()
+                {
+                    println!("AAAH");
+                    return true;
+                }
+
+                // remove processed move
+                pseudolegal_moves &= pseudolegal_moves - 1;
+            }
+            // remove the processed piece
+            pieces &= pieces - 1;
+        }
+
+        // TODO implement
+        false
+    }
+
+    fn has_sufficient_materials(board: &Board) -> bool {
+        // if pawn/rook/queen still around return true
+        if board.white_pawns > 0
+            || board.black_pawns > 0
+            || board.white_queens > 0
+            || board.black_queens > 0
+            || board.white_rooks > 0
+            || board.black_rooks > 0
+        {
+            return true;
+        }
+
+        let white_knights = board.white_knights.count_ones();
+        let black_knights = board.black_knights.count_ones();
+        let white_bishops = board.white_bishops.count_ones();
+        let black_bishops = board.black_bishops.count_ones();
+
+        if (white_knights == 0 && black_knights == 0 && white_bishops == 0 && black_bishops == 0) ||
+
+            // 1 knight only or 1 bishop only
+            (white_knights == 1 && black_knights == 0 && white_bishops == 0 && black_bishops == 0) ||
+            (white_knights == 0 && black_knights == 1 && white_bishops == 0 && black_bishops == 0) ||
+            (white_knights == 0 && black_knights == 0 && white_bishops == 1 && black_bishops == 0) ||
+            (white_knights == 0 && black_knights == 0 && white_bishops == 0 && black_bishops == 1) ||
+
+            (white_knights == 1 && black_knights == 1 && white_bishops == 0 && black_bishops == 0) || // 1 bishop each side only
+            (white_knights == 0 && black_knights == 0 && white_bishops == 1 && black_bishops == 1) ||
+
+            (white_knights == 1 && black_knights == 0 && white_bishops == 0 && black_bishops == 1) ||
+            (white_knights == 0 && black_knights == 1 && white_bishops == 1 && black_bishops == 0) ||
+
+            // 2 knights on 1 side only
+            (white_knights == 0 && black_knights == 2 && white_bishops == 0 && black_bishops == 0) ||
+            (white_knights == 2 && black_knights == 0 && white_bishops == 0 && black_bishops == 0)
+        {
+            return false;
+        }
+
+        true
+    }
+
+    fn evaluate_game_status(&mut self) {
+        // check for sufficient material
+        if !Self::has_sufficient_materials(&self.board) {
+            self.status = Status::Draw;
+            return;
+        }
+
+        let is_white = self.is_white();
+
+        let knights_moves = compute_knights_moves(&self.board, is_white);
+        let rooks_moves = compute_rooks_moves(&self.board, is_white);
+        let bishops_moves = compute_bishops_moves(&self.board, is_white);
+        let queens_moves = compute_queens_moves(&self.board, is_white);
+        let pawns_moves = compute_pawns_moves(&self.board, is_white);
+        let king_moves = compute_knights_moves(&self.board, is_white);
+
+        let knights = if is_white {
+            self.board.white_knights
+        } else {
+            self.board.black_knights
+        };
+        let rooks = if is_white {
+            self.board.white_rooks
+        } else {
+            self.board.black_rooks
+        };
+        let bishops = if is_white {
+            self.board.white_bishops
+        } else {
+            self.board.black_bishops
+        };
+        let queens = if is_white {
+            self.board.white_queens
+        } else {
+            self.board.black_queens
+        };
+        let pawns = if is_white {
+            self.board.white_pawns
+        } else {
+            self.board.black_pawns
+        };
+        let king = if is_white {
+            self.board.white_king
+        } else {
+            self.board.black_king
+        };
+
+        let opponent_king = if is_white {
+            self.board.black_king
+        } else {
+            self.board.white_king
+        };
+        let opponent_pieces = if is_white {
+            self.board.black_pieces
+        } else {
+            self.board.white_pieces
+        };
+
+        let found_legal_move =
+            self.has_valid_move(
+                knights,
+                knights_moves,
+                is_white,
+                opponent_pieces,
+                opponent_king,
+            ) || self.has_valid_move(rooks, rooks_moves, is_white, opponent_pieces, opponent_king)
+                || self.has_valid_move(
+                bishops,
+                bishops_moves,
+                is_white,
+                opponent_pieces,
+                opponent_king,
+            )
+                || self.has_valid_move(
+                queens,
+                queens_moves,
+                is_white,
+                opponent_pieces,
+                opponent_king,
+            )
+                || self.has_valid_move(
+                pawns,
+                pawns_moves,
+                is_white,
+                opponent_pieces,
+                opponent_king,
+            )
+                || self.has_valid_move(king, king_moves, is_white, opponent_pieces, opponent_king);
+
+        if found_legal_move {
+            self.status = Status::Ongoing
+        } else {
+            if self.check {
+                // check for checkmate
+                self.status = Status::Checkmate;
+            } else {
+                // check for stalemate
+                self.status = Status::Draw;
+            }
+        }
     }
 }
 
@@ -750,7 +961,7 @@ pub mod tests {
             0,
             0,
             0,
-            bitboard_single('e', 8).unwrap(),
+            bitboard_single('e', 7).unwrap(),
         );
 
         let mut game = Game::new(board);
@@ -772,7 +983,7 @@ pub mod tests {
         // promotion doesn't work if not rank 8 for white
         assert!(game.process_move("a3=R").is_err());
         game.turn = 4; // switch to black
-                       // promotion doesn't work if not rank 1 for black
+        // promotion doesn't work if not rank 1 for black
         assert!(game.process_move("a6=R").is_err());
     }
 
@@ -1071,6 +1282,31 @@ pub mod tests {
     }
 
     #[test]
+    fn test_capture_king() {
+        // king cant be captured, this is already in checked state
+        // this state is not achievable by the goal but the purpose for
+        // this test is purely to ensure that when validating move, capturing
+        // king will returns invalid move
+        let board = Board::new(
+            bitboard_single('d', 7).unwrap(),
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 1).unwrap(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 8).unwrap(),
+        );
+
+        let mut game = Game::new(board);
+        assert_eq!(Err(MoveError::InvalidMove), game.process_move("dxe8"));
+    }
+
+    #[test]
     fn test_check_state() {
         let board = Board::new(
             0,
@@ -1160,6 +1396,165 @@ pub mod tests {
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
+    }
+
+    #[test]
+    fn test_checkmate() {
+        let board = Board::new(
+            0,
+            0,
+            PositionBuilder::new()
+                .add_piece('a', 7)
+                .add_piece('h', 7)
+                .build(),
+            0,
+            0,
+            bitboard_single('a', 1).unwrap(),
+            0,
+            0,
+            bitboard_single('g', 6).unwrap(),
+            0,
+            0,
+            bitboard_single('d', 8).unwrap(),
+        );
+
+        let mut game = Game::new(board);
+
+        // neither in check
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert!(game.process_move("Rh8").is_ok());
+
+        // black in check but not mate
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Ongoing, game.status);
+        assert!(game.process_move("Rg8").is_ok());
+        // // blocked the check
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert!(game.process_move("Rxg8").is_ok());
+        // black is lost
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Checkmate, game.status);
+    }
+
+    #[test]
+    fn test_draw_insufficient_materials() {
+        let board = Board::new(
+            0,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('a', 1).unwrap(),
+            0,
+            0,
+            bitboard_single('b', 2).unwrap(),
+            0,
+            0,
+            bitboard_single('d', 8).unwrap(),
+        );
+
+        let mut game = Game::new(board);
+
+        // neither in check
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Ongoing, game.status);
+        assert!(game.process_move("Kxb2").is_ok());
+
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Draw, game.status);
+
+        let board = Board::new(
+            0,
+            bitboard_single('d',1).unwrap(),
+            0,
+            0,
+            0,
+            bitboard_single('a', 1).unwrap(),
+            0,
+            0,
+            bitboard_single('c', 3).unwrap(),
+            bitboard_single('h', 7).unwrap(),
+            0,
+            bitboard_single('d', 8).unwrap(),
+        );
+
+        let mut game = Game::new(board);
+
+        // neither in check
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Ongoing, game.status);
+        assert!(game.process_move("Nxc3").is_ok());
+
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Draw, game.status);
+
+        let board = Board::new(
+            0,
+            PositionBuilder::new()
+                .add_piece('d', 1)
+                .add_piece('f', 1)
+                .build(),
+            0,
+            0,
+            0,
+            bitboard_single('a', 1).unwrap(),
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('h', 2).unwrap(),
+            bitboard_single('d', 8).unwrap(),
+        );
+
+        let mut game = Game::new(board);
+
+        // neither in check
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Ongoing, game.status);
+        assert!(game.process_move("Nxh2").is_ok());
+
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Draw, game.status);
+    }
+
+    #[test]
+    fn test_draw_no_legal_move() {
+        let board = Board::new(
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('h', 5).unwrap(),
+            bitboard_single('h', 6).unwrap(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('h', 8).unwrap(),
+        );
+
+        let mut game = Game::new(board);
+
+        // neither in check
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Ongoing, game.status);
+        assert!(game.process_move("Qg5").is_ok());
+
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        assert_eq!(Status::Draw, game.status);
     }
 
     // #[test]
