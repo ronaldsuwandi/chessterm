@@ -797,13 +797,9 @@ pub mod tests {
         }
     }
 
-    fn process_moves_detailed(game: &mut Game, moves: &[(&str, Option<MoveError>)]) {
+    fn process_moves_error(game: &mut Game, moves: &[(&str, MoveError)]) {
         for &(mv, move_error) in moves {
-            if let Some(move_error) = move_error {
-                assert_eq!(Err(move_error), game.process_move(mv));
-            } else {
-                assert!(game.process_move(mv).is_ok());
-            }
+            assert_eq!(Err(move_error), game.process_move(mv));
         }
     }
 
@@ -856,131 +852,46 @@ pub mod tests {
 
     #[test]
     fn test_pawn_move() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('e', 2)
-            .add_piece('e', 3)
-            .add_piece('a', 2)
-            .add_piece('g', 2) // blocked
-            .add_piece('h', 2)
-            .build();
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 7)
-            .add_piece('d', 4)
-            .add_piece('g', 3)
-            .build();
-        let board = Board::new(
-            white_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('a', 1).unwrap(),
-            black_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('h', 8).unwrap(),
-        );
+        let board = Board::from_fen("7k/p7/8/8/3p4/4P1p1/P3P1PP/K7");
         let mut game = Game::new(board);
 
-        process_moves_detailed(
+        process_moves_error(
             &mut game,
             &[
                 // e3 is blocked by white piece
-                ("e3", Some(MoveError::InvalidMove)),
+                ("e3", MoveError::InvalidMove),
                 // g3 is blocked by black piece
-                ("g3", Some(MoveError::InvalidMove)),
+                ("g3", MoveError::InvalidMove),
                 // can't skip g3 because there's a black piece
-                ("g4", Some(MoveError::InvalidMove)),
-                ("h3", None),
-                ("a5", None),
+                ("g4", MoveError::InvalidMove),
             ],
         );
+        process_moves(&mut game, &["h3", "a5"]);
     }
 
     #[test]
     fn test_pawn_capture() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('e', 2)
-            .add_piece('e', 3)
-            .add_piece('a', 2)
-            .add_piece('g', 2) // blocked
-            .add_piece('h', 2)
-            .build();
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 7)
-            .add_piece('d', 4)
-            .add_piece('g', 3)
-            .build();
-        let board = Board::new(
-            white_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('a', 1).unwrap(),
-            black_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('h', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("7k/p7/8/8/3p4/4P1p1/P3P1PP/K7");
         let mut game = Game::new(board);
         // g3 can only be captured diagonally from h2
-        assert!(game.process_move("gxg3").is_err());
-        assert!(game.process_move("fxg3").is_err());
-        assert!(game.process_move("exd4").is_ok());
+        process_moves_error(&mut game, &[
+            ("gxg3", MoveError::InvalidMove),
+            ("fxg3", MoveError::InvalidMove),
+        ]);
+        process_moves(&mut game, &["exd4"]);
     }
 
     #[test]
     fn test_pawn_promotion() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('e', 2)
-            .add_piece('e', 3)
-            .add_piece('a', 2)
-            .add_piece('g', 2) // blocked
-            .add_piece('h', 7)
-            .build();
-        let white_knights: u64 = PositionBuilder::new()
-            .add_piece('b', 1)
-            .add_piece('g', 1)
-            .build();
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 7)
-            .add_piece('c', 2)
-            .add_piece('d', 3)
-            .add_piece('g', 3)
-            .build();
-        let black_knights: u64 = PositionBuilder::new()
-            .add_piece('b', 8)
-            .add_piece('g', 8)
-            .build();
-        let board = Board::new(
-            white_pawns,
-            white_knights,
-            0,
-            0,
-            0,
-            bitboard_single('e', 1).unwrap(),
-            black_pawns,
-            black_knights,
-            0,
-            0,
-            0,
-            bitboard_single('e', 7).unwrap(),
-        );
-
+        let board = Board::from_fen("1n4n1/p3k2P/8/8/8/3pP1p1/P1p1P1P1/1N2K1N1");
         let mut game = Game::new(board);
         assert_eq!(0, game.board.white_queens); // no queen before
-        assert!(game.process_move("hxg8=Q").is_ok());
+        process_moves(&mut game, &["hxg8=Q"]);
         assert_eq!(bitboard_single('g', 8).unwrap(), game.board.white_queens);
 
         // one black knight captured
         assert_eq!(bitboard_single('b', 8).unwrap(), game.board.black_knights);
-        assert!(game.process_move("c1=N").is_ok());
+        process_moves(&mut game, &["c1=N"]);
         assert_eq!(
             PositionBuilder::new()
                 .add_piece('b', 8)
@@ -990,141 +901,64 @@ pub mod tests {
         );
 
         // promotion doesn't work if not rank 8 for white
-        assert!(game.process_move("a3=R").is_err());
+        process_moves_error(&mut game, &[("a3=R", MoveError::InvalidMove)]);
         game.turn = 4; // switch to black
-                       // promotion doesn't work if not rank 1 for black
-        assert!(game.process_move("a6=R").is_err());
+        // promotion doesn't work if not rank 1 for black
+        process_moves_error(&mut game, &[("a6=R", MoveError::InvalidMove)]);
     }
 
     #[test]
     fn test_knight() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('e', 2)
-            .add_piece('c', 4)
-            .build();
-        let white_knights: u64 = PositionBuilder::new()
-            .add_piece('e', 1)
-            .add_piece('g', 1)
-            .build();
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('e', 3)
-            .add_piece('f', 3)
-            .build();
-        let black_knights: u64 = PositionBuilder::new()
-            .add_piece('b', 8)
-            .add_piece('b', 6)
-            .build();
-        let board = Board::new(
-            white_pawns,
-            white_knights,
-            0,
-            0,
-            0,
-            bitboard_single('a', 1).unwrap(),
-            black_pawns,
-            black_knights,
-            0,
-            0,
-            0,
-            bitboard_single('a', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("kn6/8/1n6/8/2P5/4pp2/4P3/K3N1N1");
         let mut game = Game::new(board);
 
-        // blocked by own piece
-        assert!(game.process_move("Ne2").is_err());
-        // ambiguous
-        assert!(game.process_move("Nxf3").is_err());
-        // must capture
-        assert!(game.process_move("Ngf3").is_err());
-        assert!(game.process_move("Ngxf3").is_ok());
-
-        // black then capture c4
-        assert!(game.process_move("Nxc4").is_ok());
-
-        // additional more detailed selector works
-        assert!(game.process_move("N3e5").is_ok());
-        assert!(game.process_move("Nb8a6").is_ok());
-        assert!(game.process_move("Ne5xc4").is_ok());
+        process_moves_error(&mut game, &[
+            // blocked by own piece
+            ("Ne2", MoveError::InvalidMove),
+            ("Nxf3", MoveError::AmbiguousSource),
+            // must capture
+            ("Ngf3", MoveError::InvalidMove),
+        ]);
+        process_moves(&mut game, &[
+            "Ngxf3",
+            "Nxc4", // black capture c4,
+            // additional detailed selectors
+            "N3e5",
+            "Nb8a6",
+            "Ne5xc4",
+        ]);
     }
 
     #[test]
     fn test_basic_moves() {
         let mut game = Game::default();
-        process_moves_detailed(
+        process_moves(&mut game, &["e4", "e5"]);
+        process_moves_error(
             &mut game,
             &[
-                ("e4", None),
-                ("e5", None),
-                ("e5", Some(MoveError::InvalidMove)), // blocked by opponent
-                ("Bb5", None),
-                ("Nf6", None),
-                ("Rb1", Some(MoveError::AmbiguousSource)), // ambiguous
-                ("Rab1", Some(MoveError::InvalidMove)), // blocked by own piece and ambiguous
-                ("Qe2", None),
-                ("Nxe4", None),
-                ("d4", None),
-                ("exd4", None),
-                ("Qe3", None),
-                ("dxe3", None),
-                ("Nf3", None),
-                ("exf2", None),
-                ("Kd1", None),
-                ("f1=Q", None),
+                ("e5", MoveError::InvalidMove), // blocked by opponent
             ],
         );
-        // assert!(game.process_move("e4").is_ok());
-        // assert!(game.process_move("e5").is_ok());
-        // assert!(game.process_move("e5").is_err()); // blocked by opponent
-        // assert!(game.process_move("Bb5").is_ok());
-        // assert!(game.process_move("Nf6").is_ok());
-        // assert!(game.process_move("Rb1").is_err()); // blocked by own piece
-        // assert!(game.process_move("Qe2").is_ok());
-        // assert!(game.process_move("Nxe4").is_ok());
-        // assert!(game.process_move("d4").is_ok());
-        // assert!(game.process_move("exd4").is_ok());
-        // assert!(game.process_move("Qe3").is_ok());
-        // assert!(game.process_move("dxe3").is_ok());
-        // assert!(game.process_move("Nf3").is_ok());
-        // assert!(game.process_move("exf2").is_ok());
-        // assert!(game.process_move("Kd1").is_ok());
-        // assert!(game.process_move("f1=Q").is_ok());
+        process_moves(&mut game, &["Bb5", "Nf6"]);
+
+        process_moves_error(
+            &mut game,
+            &[
+                ("Rb1", MoveError::AmbiguousSource), // ambiguous
+                ("Rab1", MoveError::InvalidMove),    // blocked by own piece and ambiguous
+            ],
+        );
+        process_moves(
+            &mut game,
+            &[
+                "Qe2", "Nxe4", "d4", "exd4", "Qe3", "dxe3", "Nf3", "exf2", "Kd1", "f1=Q",
+            ],
+        )
     }
 
     #[test]
     fn test_detect_pins() {
-        let white_pawns = PositionBuilder::new()
-            .add_piece('d', 2)
-            .add_piece('e', 2)
-            .add_piece('f', 2)
-            .add_piece('g', 2)
-            .build();
-
-        let white_bishops = PositionBuilder::new().add_piece('c', 1).build();
-
-        let black_queens = PositionBuilder::new().add_piece('e', 5).build();
-
-        let black_rooks = PositionBuilder::new()
-            .add_piece('a', 1)
-            .add_piece('b', 2)
-            .build();
-
-        let black_bishops = PositionBuilder::new().add_piece('h', 4).build();
-
-        let board = Board::new(
-            white_pawns,
-            0,
-            0,
-            white_bishops,
-            0,
-            bitboard_single('e', 1).unwrap(),
-            0,
-            0,
-            black_rooks,
-            black_bishops,
-            black_queens,
-            bitboard_single('a', 3).unwrap(),
-        );
+        let board = Board::from_fen("8/8/8/4q3/7b/k7/1r1PPPP1/r1B1K3");
 
         assert_eq!(
             PositionBuilder::new()
@@ -1143,33 +977,20 @@ pub mod tests {
 
     #[test]
     fn test_pinned() {
-        let board = Board::new(
-            0,
-            0,
-            bitboard_single('a', 2).unwrap(),
-            0,
-            0,
-            bitboard_single('e', 1).unwrap(),
-            0,
-            bitboard_single('e', 6).unwrap(),
-            0,
-            0,
-            0,
-            bitboard_single('e', 8).unwrap(),
-        );
+        let board = Board::from_fen("4k3/8/4n3/8/8/8/R7/4K3");
 
         let mut game = Game::new(board);
 
         // no pin at start
         assert_eq!(0, game.pinned_white);
         assert_eq!(0, game.pinned_black);
-        assert!(game.process_move("Re2").is_ok());
+        process_moves(&mut game, &["Re2"]);
         // black knight should be pinned
         assert_eq!(bitboard_single('e', 6).unwrap(), game.pinned_black);
         assert_eq!(0, game.pinned_white);
         // pinned knight should not be able to move
-        assert_eq!(Err(MoveError::Pinned), game.process_move("Ng5"));
-        assert!(game.process_move("Kd8").is_ok());
+        process_moves_error(&mut game, &[("Ng5", MoveError::Pinned)]);
+        process_moves(&mut game, &["Kd8"]);
         // black no longer pinned
         assert_eq!(0, game.pinned_white);
         assert_eq!(0, game.pinned_black);
@@ -1177,61 +998,32 @@ pub mod tests {
 
     #[test]
     fn test_pinned_sliding_both() {
-        let board = Board::new(
-            0,
-            0,
-            0,
-            bitboard_single('d', 2).unwrap(),
-            0,
-            bitboard_single('e', 1).unwrap(),
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('b', 5).unwrap(),
-            bitboard_single('d', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("3k4/8/8/1q6/8/8/3B4/4K3");
         let mut game = Game::new(board);
 
         // no pin at start
         assert_eq!(0, game.pinned_white);
         assert_eq!(0, game.pinned_black);
-        assert!(game.process_move("Bc3").is_ok());
-        assert!(game.process_move("Qa5").is_ok());
+        process_moves(&mut game, &["Bc3", "Qa5"]);
         // only white bishop should be pinned
         assert_eq!(bitboard_single('c', 3).unwrap(), game.pinned_white);
         assert_eq!(0, game.pinned_black);
 
-        let board = Board::new(
-            0,
-            0,
-            bitboard_single('b', 4).unwrap(),
-            bitboard_single('a', 3).unwrap(),
-            bitboard_single('h', 3).unwrap(),
-            bitboard_single('e', 1).unwrap(),
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('d', 6).unwrap(),
-            bitboard_single('f', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("5k2/8/3q4/8/1R6/B6Q/8/4K3");
         let mut game = Game::new(board);
 
         // no pin at start
         assert_eq!(0, game.pinned_white);
         assert_eq!(0, game.pinned_black);
-        assert!(game.process_move("Qg3").is_ok());
+        process_moves(&mut game, &["Qg3"]);
         // nothing should be pinned, only white queen can attack black queen but it's not a pin
         assert_eq!(0, game.pinned_white);
         assert_eq!(0, game.pinned_black);
-        assert!(game.process_move("Qc5").is_ok());
+        process_moves(&mut game, &["Qc5"]);
         // still no pin
         assert_eq!(0, game.pinned_white);
         assert_eq!(0, game.pinned_black);
-        assert!(game.process_move("Ra4").is_ok());
+        process_moves(&mut game, &["Ra4"]);
 
         // black queen is now pinned
         assert_eq!(0, game.pinned_white);
@@ -1240,36 +1032,21 @@ pub mod tests {
 
     #[test]
     fn test_pinned_advance() {
-        let board = Board::new(
-            bitboard_single('e', 2).unwrap(),
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 1).unwrap(),
-            0,
-            0,
-            bitboard_single('f', 4).unwrap(),
-            0,
-            bitboard_single('d', 6).unwrap(),
-            bitboard_single('e', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("4k3/8/3q4/8/5r2/8/4P3/4K3");
         let mut game = Game::new(board);
 
         // no pin at start
         assert_eq!(0, game.pinned_white);
         assert_eq!(0, game.pinned_black);
-        assert!(game.process_move("e3").is_ok());
-        assert!(game.process_move("Qe6").is_ok());
+        process_moves(&mut game, &["e3", "Qe6"]);
         // white pawn is pinned
         assert_eq!(bitboard_single('e', 3).unwrap(), game.pinned_white);
         assert_eq!(0, game.pinned_black);
 
         // pinned pawn can't capture rook at f4
-        assert_eq!(Err(MoveError::Pinned), game.process_move("exf4"));
+        process_moves_error(&mut game, &[("exf4", MoveError::Pinned)]);
         // but pinned pawn can advance
-        assert!(game.process_move("e4").is_ok());
+        process_moves(&mut game, &["e4"]);
         // pawn now advanced to e4 and still pinned
         assert_eq!(bitboard_single('e', 4).unwrap(), game.pinned_white);
         assert_eq!(0, game.pinned_black);
@@ -1277,35 +1054,20 @@ pub mod tests {
 
     #[test]
     fn test_pinned_advance_capture() {
-        let board = Board::new(
-            0,
-            0,
-            0,
-            bitboard_single('d', 2).unwrap(),
-            0,
-            bitboard_single('e', 1).unwrap(),
-            bitboard_single('d', 7).unwrap(),
-            0,
-            0,
-            0,
-            bitboard_single('b', 5).unwrap(),
-            bitboard_single('d', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("4k3/3p4/8/2q5/8/8/3B4/4K3");
         let mut game = Game::new(board);
 
         // no pin at start
         assert_eq!(0, game.pinned_white);
         assert_eq!(0, game.pinned_black);
-        assert!(game.process_move("Bc3").is_ok());
-        assert!(game.process_move("Qa5").is_ok());
+        process_moves(&mut game, &["Bc3", "Qa5"]);
 
         // // white bishop is pinned
         assert_eq!(bitboard_single('c', 3).unwrap(), game.pinned_white);
         assert_eq!(0, game.pinned_black);
 
         // pinned bishop captures queen
-        assert!(game.process_move("Bxa5").is_ok());
+        process_moves(&mut game, &["Bxa5"]);
 
         // no more pin
         assert_eq!(0, game.pinned_white);
@@ -1318,112 +1080,73 @@ pub mod tests {
         // this state is not achievable by the goal but the purpose for
         // this test is purely to ensure that when validating move, capturing
         // king will returns invalid move
-        let board = Board::new(
-            bitboard_single('d', 7).unwrap(),
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 1).unwrap(),
-            0,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 8).unwrap(),
-        );
+        let board = Board::from_fen("4k3/3P4/8/8/8/8/8/4K3");
 
         let mut game = Game::new(board);
-        assert_eq!(Err(MoveError::InvalidMove), game.process_move("dxe8"));
+        process_moves_error(&mut game, &[("dxe8", MoveError::InvalidMove)]);
     }
 
     #[test]
     fn test_check_state() {
-        let board = Board::new(
-            0,
-            0,
-            0,
-            bitboard_single('d', 2).unwrap(),
-            0,
-            bitboard_single('e', 1).unwrap(),
-            0,
-            0,
-            bitboard_single('e', 6).unwrap(),
-            bitboard_single('e', 5).unwrap(),
-            0,
-            bitboard_single('d', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("4k3/8/4r3/4b3/8/8/3B4/4K3");
         let mut game = Game::new(board);
         game.turn = 2; // black's turn
         assert!(!Game::is_in_check(&game.board, game.is_white()));
         // discovered check
-        assert!(game.process_move("Bg3").is_ok());
+        process_moves(&mut game, &["Bg3"]);
         // white is checked
         assert!(Game::is_in_check(&game.board, game.is_white()));
         // white move
-        assert!(game.process_move("Kd1").is_ok());
+        process_moves(&mut game, &["Kd1"]);
         // black is not checked
         assert!(!Game::is_in_check(&game.board, game.is_white()));
         // black move
-        assert!(game.process_move("Kd7").is_ok());
+        process_moves(&mut game, &["Kd7"]);
         // white is not checked
         assert!(!Game::is_in_check(&game.board, game.is_white()));
     }
 
     #[test]
     fn test_check_move_restriction() {
-        let board = Board::new(
-            0,
-            bitboard_single('d', 6).unwrap(),
-            bitboard_single('d', 2).unwrap(),
-            0,
-            0,
-            bitboard_single('a', 1).unwrap(),
-            0,
-            0,
-            bitboard_single('e', 6).unwrap(),
-            0,
-            0,
-            bitboard_single('d', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("3k4/8/3Nr3/8/8/8/3R4/K7");
         let mut game = Game::new(board);
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
 
         // discovered check
-        assert!(game.process_move("Nb7").is_ok());
+        process_moves(&mut game, &["Nb7"]);
 
         // black is checked
         assert!(!Game::is_in_check(&game.board, true));
         assert!(Game::is_in_check(&game.board, false));
 
         // black can't move rook, king is still checked
-        assert_eq!(Err(MoveError::Checked), game.process_move("Ra6"));
-        assert_eq!(Err(MoveError::Checked), game.process_move("Re1"));
-        // can't move king to position that's still being checked
-        assert_eq!(Err(MoveError::Checked), game.process_move("Kd7"));
+        process_moves_error(&mut game, &[
+            ("Ra6", MoveError::Checked),
+            ("Re1", MoveError::Checked),
+            // can't move king to position that's still being checked
+            ("Kd7", MoveError::Checked),
+        ]);
+
         // black is checked
         assert!(!Game::is_in_check(&game.board, true));
         assert!(Game::is_in_check(&game.board, false));
 
         // black move king to uncheck
-        assert!(game.process_move("Ke8").is_ok());
+        process_moves(&mut game, &["Ke8"]);
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
 
         // move white king
-        assert!(game.process_move("Kb1").is_ok());
-        assert!(game.process_move("Rb6").is_ok());
+        process_moves(&mut game, &["Kb1", "Rb6"]);
         // white is now checked
         assert!(Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
 
         // move white rook to block check
-        assert!(game.process_move("Rb2").is_ok());
+        process_moves(&mut game, &["Rb2"]);
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
@@ -1431,40 +1154,24 @@ pub mod tests {
 
     #[test]
     fn test_checkmate() {
-        let board = Board::new(
-            0,
-            0,
-            PositionBuilder::new()
-                .add_piece('a', 7)
-                .add_piece('h', 7)
-                .build(),
-            0,
-            0,
-            bitboard_single('a', 1).unwrap(),
-            0,
-            0,
-            bitboard_single('g', 6).unwrap(),
-            0,
-            0,
-            bitboard_single('d', 8).unwrap(),
-        );
+        let board = Board::from_fen("3k4/R6R/6r1/8/8/8/8/K7");
 
         let mut game = Game::new(board);
 
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
-        assert!(game.process_move("Rh8").is_ok());
+        process_moves(&mut game, &["Rh8"]);
 
         // black in check but not mate
         assert!(!Game::is_in_check(&game.board, true));
         assert!(Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
-        assert!(game.process_move("Rg8").is_ok());
+        process_moves(&mut game, &["Rg8"]);
         // // blocked the check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
-        assert!(game.process_move("Rxg8").is_ok());
+        process_moves(&mut game, &["Rxg8"]);
         // black is lost
         assert!(!Game::is_in_check(&game.board, true));
         assert!(Game::is_in_check(&game.board, false));
@@ -1473,85 +1180,43 @@ pub mod tests {
 
     #[test]
     fn test_draw_insufficient_materials() {
-        let board = Board::new(
-            0,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('a', 1).unwrap(),
-            0,
-            0,
-            bitboard_single('b', 2).unwrap(),
-            0,
-            0,
-            bitboard_single('d', 8).unwrap(),
-        );
-
+        // 2 kings
+        let board = Board::from_fen("3k4/8/8/8/8/8/1r6/K7");
         let mut game = Game::new(board);
 
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
-        assert!(game.process_move("Kxb2").is_ok());
+        process_moves(&mut game, &["Kxb2"]);
 
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
 
-        let board = Board::new(
-            0,
-            bitboard_single('d', 1).unwrap(),
-            0,
-            0,
-            0,
-            bitboard_single('a', 1).unwrap(),
-            0,
-            0,
-            bitboard_single('c', 3).unwrap(),
-            bitboard_single('h', 7).unwrap(),
-            0,
-            bitboard_single('d', 8).unwrap(),
-        );
-
+        // knight and bishop
+        let board = Board::from_fen("3k4/7b/8/8/8/2r5/8/K2N4");
         let mut game = Game::new(board);
 
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
-        assert!(game.process_move("Nxc3").is_ok());
+        process_moves(&mut game, &["Nxc3"]);
 
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
 
-        let board = Board::new(
-            0,
-            PositionBuilder::new()
-                .add_piece('d', 1)
-                .add_piece('f', 1)
-                .build(),
-            0,
-            0,
-            0,
-            bitboard_single('a', 1).unwrap(),
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('h', 2).unwrap(),
-            bitboard_single('d', 8).unwrap(),
-        );
-
+        // 2 knights
+        let board = Board::from_fen("3k4/8/8/8/8/8/7q/K2N1N2");
         let mut game = Game::new(board);
 
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
-        assert!(game.process_move("Nxh2").is_ok());
+        process_moves(&mut game, &["Nxh2"]);
 
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
@@ -1560,28 +1225,14 @@ pub mod tests {
 
     #[test]
     fn test_draw_no_legal_move() {
-        let board = Board::new(
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('h', 5).unwrap(),
-            bitboard_single('h', 6).unwrap(),
-            0,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('h', 8).unwrap(),
-        );
-
+        let board = Board::from_fen("7k/8/7K/7Q/8/8/8/8");
         let mut game = Game::new(board);
 
         // neither in check
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
-        assert!(game.process_move("Qg5").is_ok());
+        process_moves(&mut game, &["Qg5"]);
 
         assert!(!Game::is_in_check(&game.board, true));
         assert!(!Game::is_in_check(&game.board, false));
