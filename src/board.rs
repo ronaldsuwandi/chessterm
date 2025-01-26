@@ -21,6 +21,101 @@ pub struct Board {
 }
 
 impl Board {
+    pub fn from_fen(fen: &str) -> Board {
+        let mut white_pawns_builder = PositionBuilder::new();
+        let mut white_knights_builder = PositionBuilder::new();
+        let mut white_rooks_builder = PositionBuilder::new();
+        let mut white_bishops_builder = PositionBuilder::new();
+        let mut white_queens_builder = PositionBuilder::new();
+        let mut white_king_builder = PositionBuilder::new();
+        let mut black_pawns_builder = PositionBuilder::new();
+        let mut black_knights_builder = PositionBuilder::new();
+        let mut black_rooks_builder = PositionBuilder::new();
+        let mut black_bishops_builder = PositionBuilder::new();
+        let mut black_queens_builder = PositionBuilder::new();
+        let mut black_king_builder = PositionBuilder::new();
+
+        let mut rank = 8;
+        let mut file = 'a';
+
+        for c in fen.chars() {
+            match c {
+                'P' => {
+                    white_pawns_builder = white_pawns_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'p' => {
+                    black_pawns_builder = black_pawns_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'R' => {
+                    white_rooks_builder = white_rooks_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'r' => {
+                    black_rooks_builder = black_rooks_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'N' => {
+                    white_knights_builder = white_knights_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'n' => {
+                    black_knights_builder = black_knights_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'B' => {
+                    white_bishops_builder = white_bishops_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'b' => {
+                    black_bishops_builder = black_bishops_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'Q' => {
+                    white_queens_builder = white_queens_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'q' => {
+                    black_queens_builder = black_queens_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'K' => {
+                    white_king_builder = white_king_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                'k' => {
+                    black_king_builder = black_king_builder.add_piece(file, rank);
+                    file = ((file as u8) + 1) as char;
+                }
+                '/' => {
+                    rank -= 1;
+                    file = 'a';
+                }
+                '1'..='8' => {
+                    file = ((file as u8) + (c as u8 - '0' as u8)) as char;
+                }
+                _ => panic!("Invalid FEN character: {}", c),
+
+            }
+        }
+
+        Self::new(
+            white_pawns_builder.build(),
+            white_knights_builder.build(),
+            white_rooks_builder.build(),
+            white_bishops_builder.build(),
+            white_queens_builder.build(),
+            white_king_builder.build(),
+            black_pawns_builder.build(),
+            black_knights_builder.build(),
+            black_rooks_builder.build(),
+            black_bishops_builder.build(),
+            black_queens_builder.build(),
+            black_king_builder.build(),
+        )
+    }
+
     pub fn new(
         white_pawns: u64,
         white_knights: u64,
@@ -459,51 +554,68 @@ pub mod tests {
 
     #[test]
     fn test_is_rank() {
-        assert_eq!(true, is_rank(bitboard_single('a', 2).unwrap(), 2));
-        assert_eq!(true, is_rank(bitboard_single('b', 2).unwrap(), 2));
-        assert_eq!(true, is_rank(bitboard_single('c', 2).unwrap(), 2));
-        assert_eq!(true, is_rank(bitboard_single('d', 2).unwrap(), 2));
-        assert_eq!(true, is_rank(bitboard_single('e', 2).unwrap(), 2));
-        assert_eq!(true, is_rank(bitboard_single('f', 2).unwrap(), 2));
-        assert_eq!(true, is_rank(bitboard_single('g', 2).unwrap(), 2));
-        assert_eq!(true, is_rank(bitboard_single('h', 2).unwrap(), 2));
-        assert_eq!(true, is_rank(bitboard_single('b', 1).unwrap(), 1));
-        assert_eq!(false, is_rank(bitboard_single('a', 5).unwrap(), 2));
-        assert_eq!(false, is_rank(bitboard_single('b', 1).unwrap(), 2));
+        assert!(is_rank(bitboard_single('a', 2).unwrap(), 2));
+        assert!(is_rank(bitboard_single('b', 2).unwrap(), 2));
+        assert!(is_rank(bitboard_single('c', 2).unwrap(), 2));
+        assert!(is_rank(bitboard_single('d', 2).unwrap(), 2));
+        assert!(is_rank(bitboard_single('e', 2).unwrap(), 2));
+        assert!(is_rank(bitboard_single('f', 2).unwrap(), 2));
+        assert!(is_rank(bitboard_single('g', 2).unwrap(), 2));
+        assert!(is_rank(bitboard_single('h', 2).unwrap(), 2));
+        assert!(is_rank(bitboard_single('b', 1).unwrap(), 1));
+        assert!(!is_rank(bitboard_single('a', 5).unwrap(), 2));
+        assert!(!is_rank(bitboard_single('b', 1).unwrap(), 2));
     }
 
     #[test]
     fn test_is_file() {
-        assert_eq!(true, is_file(bitboard_single('b', 1).unwrap(), 'b'));
-        assert_eq!(true, is_file(bitboard_single('b', 2).unwrap(), 'b'));
-        assert_eq!(true, is_file(bitboard_single('b', 3).unwrap(), 'b'));
-        assert_eq!(true, is_file(bitboard_single('b', 4).unwrap(), 'b'));
-        assert_eq!(true, is_file(bitboard_single('b', 5).unwrap(), 'b'));
-        assert_eq!(true, is_file(bitboard_single('b', 6).unwrap(), 'b'));
-        assert_eq!(true, is_file(bitboard_single('b', 7).unwrap(), 'b'));
-        assert_eq!(true, is_file(bitboard_single('b', 8).unwrap(), 'b'));
-        assert_eq!(true, is_file(bitboard_single('a', 1).unwrap(), 'a'));
-        assert_eq!(false, is_file(bitboard_single('a', 5).unwrap(), 'b'));
-        assert_eq!(false, is_file(bitboard_single('g', 1).unwrap(), 'f'));
+        assert!(is_file(bitboard_single('b', 1).unwrap(), 'b'));
+        assert!(is_file(bitboard_single('b', 2).unwrap(), 'b'));
+        assert!(is_file(bitboard_single('b', 3).unwrap(), 'b'));
+        assert!(is_file(bitboard_single('b', 4).unwrap(), 'b'));
+        assert!(is_file(bitboard_single('b', 5).unwrap(), 'b'));
+        assert!(is_file(bitboard_single('b', 6).unwrap(), 'b'));
+        assert!(is_file(bitboard_single('b', 7).unwrap(), 'b'));
+        assert!(is_file(bitboard_single('b', 8).unwrap(), 'b'));
+        assert!(is_file(bitboard_single('a', 1).unwrap(), 'a'));
+        assert!(!is_file(bitboard_single('a', 5).unwrap(), 'b'));
+        assert!(!is_file(bitboard_single('g', 1).unwrap(), 'f'));
+    }
+
+    #[test]
+    fn test_from_fen() {
+        let board = Board::from_fen("1k5q/p5Pr/pq6/8/8/5NB1/1P6/4K3");
+        let pieces = [
+            (board.black_king, 'b', 8),
+            (board.black_queens, 'h', 8),
+            (board.black_queens, 'b', 6),
+            (board.black_rooks, 'h', 7),
+            (board.black_pawns, 'a', 7),
+            (board.black_pawns, 'a', 6),
+            (board.white_king, 'e', 1),
+            (board.white_knights, 'f', 3),
+            (board.white_bishops, 'g', 3),
+            (board.white_pawns, 'b', 2),
+            (board.white_pawns, 'g', 7),
+        ];
+
+        for (piece, file, rank) in pieces {
+            assert_ne!(0, piece & bitboard_single(file, rank).unwrap())
+        }
+
+        assert_eq!(0, board.black_knights);
+        assert_eq!(0, board.black_bishops);
+        assert_eq!(0, board.white_rooks);
+        assert_eq!(0, board.white_queens);
+
+        // confirm c4 is empty
+        assert_eq!(0, board.white_pieces & bitboard_single('c', 4).unwrap());
+        assert_eq!(0, board.black_pieces & bitboard_single('c', 4).unwrap());
     }
 
     #[test]
     fn test_is_capture() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 2)
-            .add_piece('e', 3)
-            .add_piece('f', 2)
-            .add_piece('g', 6)
-            .build();
-
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 3)
-            .add_piece('b', 3)
-            .add_piece('g', 3)
-            .add_piece('h', 7)
-            .build();
-
-        let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
+        let board = Board::from_fen("8/7p/6P1/8/8/pp2P1p1/P4P2/8");
 
         assert!(board.is_capture(bitboard_single('b', 3).unwrap(), true));
         assert!(board.is_capture(bitboard_single('g', 3).unwrap(), true));
@@ -525,7 +637,6 @@ pub mod tests {
         let black_pawns = PositionBuilder::new().add_piece('f', 7).build();
 
         let mut board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
-
         board.move_piece(
             bitboard_single('e', 2).unwrap(),
             bitboard_single('e', 4).unwrap(),
@@ -573,8 +684,6 @@ pub mod tests {
         assert_eq!(white_pawns, board.white_pawns);
         assert_eq!(black_pawns, board.black_pawns);
 
-        // TODO test with other piece too
-
         board.remove_piece(bitboard_single('e', 2).unwrap(), true);
         board.remove_piece(bitboard_single('d', 2).unwrap(), true);
         assert_eq!(0, board.white_pawns);
@@ -616,8 +725,6 @@ pub mod tests {
             .unwrap();
         assert_eq!(board.white_pawns, actual_white_piece);
         assert_eq!(board.black_pawns, actual_black_piece);
-
-        // TODO test with more pieces
 
         assert_eq!(
             None,
