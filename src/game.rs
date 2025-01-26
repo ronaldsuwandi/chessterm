@@ -1,4 +1,4 @@
-use crate::board::{is_file, is_rank, render_bitboard, Board};
+use crate::board::{is_file, is_rank, Board};
 use crate::moves::{
     compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves,
     compute_queens_moves, compute_rooks_moves, resolve_bishop_source, resolve_king_source,
@@ -31,9 +31,20 @@ pub struct Game {
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
+pub enum InvalidMoveReason {
+    NoSourceOrTarget,
+    InvalidSourceOrTarget,
+    MultipleTargets,
+    NotCaptureMove,
+    KingCaptureMove,
+    PawnNonDiagonalCapture,
+    PawnInvalidPromotion,
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum MoveError {
     AmbiguousSource,
-    InvalidMove,
+    InvalidMove(InvalidMoveReason),
     Pinned,
     Checked,
     ParseError,
@@ -180,9 +191,7 @@ impl Game {
         let to = mv.to;
         let from = resolve_pawn_source(&self.board, &mv, self.is_white());
 
-        if !self.validate_pawn_move(from, to, &mv, self.is_white()) {
-            return Err(MoveError::InvalidMove);
-        }
+        self.validate_pawn_move(from, to, &mv, self.is_white())?;
 
         self.validate_move_piece(
             from,
@@ -226,7 +235,7 @@ impl Game {
     }
 
     // pawn specific move validation (diagonal capture, promotion, etc)
-    fn validate_pawn_move(&self, from: u64, to: u64, mv: &ParsedMove, is_white: bool) -> bool {
+    fn validate_pawn_move(&self, from: u64, to: u64, mv: &ParsedMove, is_white: bool) -> Result<(), MoveError> {
         if mv.is_capture {
             let diagonal_moves = if is_white {
                 (from << 7) | (from << 9) // diagonal forward left/right
@@ -234,7 +243,7 @@ impl Game {
                 (from >> 7) | (from >> 9) // diagonal backward left/right
             };
             if to & diagonal_moves == 0 {
-                return false; // not diagonal capture, invalid move
+                return Err(MoveError::InvalidMove(InvalidMoveReason::PawnNonDiagonalCapture));
             }
         }
 
@@ -247,12 +256,12 @@ impl Game {
             };
 
             if !correct_rank {
-                return false;
+                return Err(MoveError::InvalidMove(InvalidMoveReason::PawnInvalidPromotion));
             }
         }
 
         // TODO check for enpassant?
-        true
+        Ok(())
     }
 
     fn validate_move_pinned_piece(
@@ -304,33 +313,27 @@ impl Game {
     {
         let pseudolegal_moves = compute_moves(&self.board, is_white);
         if from == to {
-            println!("Invalid from and to square");
-            return Err(MoveError::InvalidMove);
+            return Err(MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget));
         }
 
         if from == 0 || to == 0 {
-            println!("No source or target square");
-            return Err(MoveError::InvalidMove);
+            return Err(MoveError::InvalidMove(InvalidMoveReason::NoSourceOrTarget));
         }
 
         if to.count_ones() != 1 {
-            println!("Target must only have 1 position");
-            return Err(MoveError::InvalidMove);
+            return Err(MoveError::InvalidMove(InvalidMoveReason::MultipleTargets));
         }
 
         if from.count_ones() > 1 {
-            println!("Ambiguous source");
             return Err(MoveError::AmbiguousSource);
         }
 
         if (from & pieces) == 0 {
-            println!("Invalid from square");
-            return Err(MoveError::InvalidMove);
+            return Err(MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget));
         }
 
         if (to & pseudolegal_moves) == 0 {
-            println!("Invalid target square");
-            return Err(MoveError::InvalidMove);
+            return Err(MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget));
         }
 
         let pinned = if is_white {
@@ -346,8 +349,7 @@ impl Game {
 
         let target_must_be_captured = self.board.is_capture(to, is_white);
         if is_capture != target_must_be_captured {
-            println!("Target must be captured, not moved");
-            return Err(MoveError::InvalidMove);
+            return Err(MoveError::InvalidMove(InvalidMoveReason::NotCaptureMove));
         }
 
         let opponent_king = if is_white {
@@ -356,14 +358,12 @@ impl Game {
             self.board.white_king
         };
         if is_capture && (to & opponent_king != 0) {
-            println!("King cannot be captured");
-            return Err(MoveError::InvalidMove);
+            return Err(MoveError::InvalidMove(InvalidMoveReason::KingCaptureMove));
         }
 
         // test for check
         if Self::is_in_check(&self.board, is_white) {
             if self.validate_move_check(from, to, is_white) {
-                println!("King is still checked");
                 return Err(MoveError::Checked);
             }
         }
@@ -789,7 +789,7 @@ impl Default for Game {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::board::{bit_pos, bitboard_single, render_bitboard, Board, PositionBuilder};
+    use crate::board::{bitboard_single, Board, PositionBuilder};
 
     fn process_moves(game: &mut Game, moves: &[&str]) {
         for &mv in moves {
@@ -813,14 +813,14 @@ pub mod tests {
             bitboard_single('d', 3).unwrap(),
             &parse_move("exd3").unwrap(),
             true
-        ));
+        ).is_ok());
 
         assert!(!game.validate_pawn_move(
             bitboard_single('e', 2).unwrap(),
             bitboard_single('e', 3).unwrap(),
             &parse_move("exe3").unwrap(),
             true
-        ));
+        ).is_ok());
 
         // check for promotion
         assert!(game.validate_pawn_move(
@@ -828,26 +828,26 @@ pub mod tests {
             bitboard_single('e', 8).unwrap(),
             &parse_move("e8=Q").unwrap(),
             true
-        ));
+        ).is_ok());
         assert!(!game.validate_pawn_move(
             bitboard_single('e', 6).unwrap(),
             bitboard_single('e', 7).unwrap(),
             &parse_move("e7=Q").unwrap(),
             true
-        ));
+        ).is_ok());
 
         assert!(game.validate_pawn_move(
             bitboard_single('e', 2).unwrap(),
             bitboard_single('e', 1).unwrap(),
             &parse_move("e1=Q").unwrap(),
             false
-        ));
+        ).is_ok());
         assert!(!game.validate_pawn_move(
             bitboard_single('e', 3).unwrap(),
             bitboard_single('e', 2).unwrap(),
             &parse_move("e2=Q").unwrap(),
             false
-        ));
+        ).is_ok());
     }
 
     #[test]
@@ -859,11 +859,11 @@ pub mod tests {
             &mut game,
             &[
                 // e3 is blocked by white piece
-                ("e3", MoveError::InvalidMove),
+                ("e3", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),
                 // g3 is blocked by black piece
-                ("g3", MoveError::InvalidMove),
+                ("g3", MoveError::InvalidMove(InvalidMoveReason::NotCaptureMove)),
                 // can't skip g3 because there's a black piece
-                ("g4", MoveError::InvalidMove),
+                ("g4", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),
             ],
         );
         process_moves(&mut game, &["h3", "a5"]);
@@ -875,8 +875,8 @@ pub mod tests {
         let mut game = Game::new(board);
         // g3 can only be captured diagonally from h2
         process_moves_error(&mut game, &[
-            ("gxg3", MoveError::InvalidMove),
-            ("fxg3", MoveError::InvalidMove),
+            ("gxg3", MoveError::InvalidMove(InvalidMoveReason::PawnNonDiagonalCapture)),
+            ("fxg3", MoveError::InvalidMove(InvalidMoveReason::PawnNonDiagonalCapture)),
         ]);
         process_moves(&mut game, &["exd4"]);
     }
@@ -901,10 +901,10 @@ pub mod tests {
         );
 
         // promotion doesn't work if not rank 8 for white
-        process_moves_error(&mut game, &[("a3=R", MoveError::InvalidMove)]);
+        process_moves_error(&mut game, &[("a3=R", MoveError::InvalidMove(InvalidMoveReason::PawnInvalidPromotion))]);
         game.turn = 4; // switch to black
         // promotion doesn't work if not rank 1 for black
-        process_moves_error(&mut game, &[("a6=R", MoveError::InvalidMove)]);
+        process_moves_error(&mut game, &[("a6=R", MoveError::InvalidMove(InvalidMoveReason::PawnInvalidPromotion))]);
     }
 
     #[test]
@@ -914,10 +914,10 @@ pub mod tests {
 
         process_moves_error(&mut game, &[
             // blocked by own piece
-            ("Ne2", MoveError::InvalidMove),
+            ("Ne2", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),
             ("Nxf3", MoveError::AmbiguousSource),
             // must capture
-            ("Ngf3", MoveError::InvalidMove),
+            ("Ngf3", MoveError::InvalidMove(InvalidMoveReason::NotCaptureMove)),
         ]);
         process_moves(&mut game, &[
             "Ngxf3",
@@ -936,7 +936,7 @@ pub mod tests {
         process_moves_error(
             &mut game,
             &[
-                ("e5", MoveError::InvalidMove), // blocked by opponent
+                ("e5", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)), // blocked by opponent
             ],
         );
         process_moves(&mut game, &["Bb5", "Nf6"]);
@@ -945,7 +945,7 @@ pub mod tests {
             &mut game,
             &[
                 ("Rb1", MoveError::AmbiguousSource), // ambiguous
-                ("Rab1", MoveError::InvalidMove),    // blocked by own piece and ambiguous
+                ("Rab1", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),    // blocked by own piece and ambiguous
             ],
         );
         process_moves(
@@ -1083,7 +1083,7 @@ pub mod tests {
         let board = Board::from_fen("4k3/3P4/8/8/8/8/8/4K3");
 
         let mut game = Game::new(board);
-        process_moves_error(&mut game, &[("dxe8", MoveError::InvalidMove)]);
+        process_moves_error(&mut game, &[("dxe8", MoveError::InvalidMove(InvalidMoveReason::KingCaptureMove))]);
     }
 
     #[test]
