@@ -1,7 +1,8 @@
 use crate::board::{bitboard_single, is_file, is_rank, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H, MASK_RANK_2, MASK_RANK_7};
 use crate::parser::ParsedMove;
 use crate::precompute_moves;
-// move generation related, only generate pseudo-legal moves
+/// move generation related, only generate pseudo-legal moves which ensure that
+/// moves are within bounds, exclude friendly pieces and exclude blocked pieces
 
 // PAWNS
 pub fn compute_pawns_moves(board: &Board, is_white: bool) -> u64 {
@@ -11,9 +12,14 @@ pub fn compute_pawns_moves(board: &Board, is_white: bool) -> u64 {
     let capture_diagonals = compute_pawns_diagonal_captures(&board, is_white);
     let double_moves = compute_pawns_double_moves(&board, is_white);
 
-    moves = single_moves | double_moves | capture_diagonals;
+    let own_pieces = if is_white {
+        board.white_pieces
+    } else {
+        board.black_pieces
+    };
 
-    // TODO - en passant
+    // exclude own pieces
+    moves = single_moves | double_moves | capture_diagonals & !own_pieces;
     moves
 }
 
@@ -48,22 +54,21 @@ fn compute_pawns_double_moves(board: &Board, is_white: bool) -> u64 {
 }
 
 fn compute_pawns_diagonal_captures(board: &Board, is_white: bool) -> u64 {
-    let opponents: u64;
     let mut moves: u64;
     let left_diagonal: u64;
     let right_diagonal: u64;
 
     if is_white {
         moves = board.white_pawns;
-        opponents = board.black_pieces;
-        left_diagonal = moves << 7 & opponents & !MASK_FILE_H; // prevent wrap-around on H file for left diagonal move
-        right_diagonal = moves << 9 & opponents & !MASK_FILE_A; // prevent wrap-around on A file on right diagonal move
+        left_diagonal = moves << 7 & !MASK_FILE_H; // prevent wrap-around on H file for left diagonal move
+        right_diagonal = moves << 9 & !MASK_FILE_A; // prevent wrap-around on A file on right diagonal move
     } else {
         moves = board.black_pawns;
-        opponents = board.white_pieces;
-        left_diagonal = moves >> 9 & opponents & !MASK_FILE_H; // prevent wrap-around on H file for left diagonal move
-        right_diagonal = moves >> 7 & opponents & !MASK_FILE_A; // prevent wrap-around on A file on right diagonal move
+        left_diagonal = moves >> 9 & !MASK_FILE_H; // prevent wrap-around on H file for left diagonal move
+        right_diagonal = moves >> 7 & !MASK_FILE_A; // prevent wrap-around on A file on right diagonal move
     }
+
+    // TODO add diagonal capture for en passant
 
     moves = left_diagonal | right_diagonal;
     moves
@@ -600,7 +605,7 @@ pub fn resolve_queen_source(board: &Board, parsed_move: &ParsedMove, is_white: b
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::board::{bit_pos, render_bitboard, Board, PositionBuilder};
+    use crate::board::{bit_pos, Board, PositionBuilder};
     use crate::parser::parse_move;
 
     #[test]
@@ -619,11 +624,16 @@ pub mod tests {
         let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
         let expected_white_moves: u64 = PositionBuilder::new()
+            .add_piece('b', 3)
             .add_piece('d', 4)
+            .add_piece('f', 4)
             .add_piece('g', 3)
             .build();
         let expected_black_moves: u64 = PositionBuilder::new()
+            .add_piece('b', 6)
+            .add_piece('c', 3)
             .add_piece('e', 3)
+            .add_piece('f', 2)
             .add_piece('h', 2)
             .build();
 
@@ -667,7 +677,6 @@ pub mod tests {
             .build();
 
         let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
-        render_bitboard(&compute_pawns_double_moves(&board, true), 'm');
 
         assert_eq!(
             expected_white_moves,
@@ -705,8 +714,6 @@ pub mod tests {
 
         let board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
 
-        render_bitboard(&compute_pawns_single_moves(&board, false), 'W');
-
         assert_eq!(
             expected_white_moves,
             compute_pawns_single_moves(&board, true)
@@ -731,10 +738,18 @@ pub mod tests {
             .build();
 
         let expected: u64 = PositionBuilder::new()
+            .add_piece('b', 3)
+
+            .add_piece('c', 3)
             .add_piece('d', 3)
             .add_piece('d', 4)
+
+            .add_piece('d', 4)
             .add_piece('e', 4)
+            .add_piece('f', 4)
+
             .add_piece('f', 3)
+            .add_piece('g', 3)
             .add_piece('f', 4)
             .build();
 
@@ -755,8 +770,14 @@ pub mod tests {
         let expected: u64 = PositionBuilder::new()
             .add_piece('a', 6)
             .add_piece('a', 5)
+            .add_piece('b', 6)
+
+            .add_piece('c', 1)
             .add_piece('d', 1)
+            .add_piece('e', 1)
+
             .add_piece('e', 2)
+            .add_piece('f', 2)
             .build();
 
         let board = Board::new(0, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
@@ -1556,8 +1577,6 @@ pub mod tests {
             0,
         );
 
-        board.render();
-
         // non-ambiguous source
         assert_eq!(
             bitboard_single('b', 1).unwrap(),
@@ -1666,8 +1685,6 @@ pub mod tests {
             0,
             bitboard_single('a',8).unwrap(),
         );
-
-        board.render();
 
         assert_eq!(
             bitboard_single('d', 5).unwrap(),

@@ -1,4 +1,4 @@
-use crate::board::{is_file, is_rank, Board};
+use crate::board::{is_file, is_rank, render_bitboard, Board};
 use crate::moves::{
     compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves,
     compute_queens_moves, compute_rooks_moves, resolve_bishop_source, resolve_king_source,
@@ -17,6 +17,23 @@ pub struct Game {
     pub white_can_castle_queenside: bool,
     pub black_can_castle_kingside: bool,
     pub black_can_castle_queenside: bool,
+
+    // computed moves
+    pub white_pawns_pseudolegal_moves: u64,
+    pub white_knights_pseudolegal_moves: u64,
+    pub white_rooks_pseudolegal_moves: u64,
+    pub white_bishops_pseudolegal_moves: u64,
+    pub white_queens_pseudolegal_moves: u64,
+    pub white_king_pseudolegal_moves: u64,
+    pub black_pawns_pseudolegal_moves: u64,
+    pub black_knights_pseudolegal_moves: u64,
+    pub black_rooks_pseudolegal_moves: u64,
+    pub black_bishops_pseudolegal_moves: u64,
+    pub black_queens_pseudolegal_moves: u64,
+    pub black_king_pseudolegal_moves: u64,
+
+    pub white_attack_moves: u64,
+    pub black_attack_moves: u64,
 
     // check
     pub check: bool,
@@ -59,110 +76,247 @@ pub enum Status {
 
 impl Game {
     pub fn new(board: Board) -> Game {
-        Game {
+        let mut game = Game {
             board,
             turn: 1,
+
             white_can_castle_kingside: true,
             white_can_castle_queenside: true,
             black_can_castle_kingside: true,
             black_can_castle_queenside: true,
+
+            white_pawns_pseudolegal_moves: 0,
+            white_knights_pseudolegal_moves: 0,
+            white_rooks_pseudolegal_moves: 0,
+            white_bishops_pseudolegal_moves: 0,
+            white_queens_pseudolegal_moves: 0,
+            white_king_pseudolegal_moves: 0,
+            black_pawns_pseudolegal_moves: 0,
+            black_knights_pseudolegal_moves: 0,
+            black_rooks_pseudolegal_moves: 0,
+            black_bishops_pseudolegal_moves: 0,
+            black_queens_pseudolegal_moves: 0,
+            black_king_pseudolegal_moves: 0,
+
+            white_attack_moves: 0,
+            black_attack_moves: 0,
 
             check: false,
             pinned_white: 0,
             pinned_black: 0,
 
             status: Status::Ongoing,
-        }
+        };
+
+        // initialise precomputed moves
+        game.update_computed_moves();
+        game
     }
 
     fn is_white(&self) -> bool {
         self.turn & 1 == 1
     }
 
+    fn get_pieces(board: &Board, piece_type: &Piece, is_white: bool) -> u64 {
+        match piece_type {
+            Piece::Pawn => {
+                if is_white {
+                    board.white_pawns
+                } else {
+                    board.black_pawns
+                }
+            }
+            Piece::Knight => {
+                if is_white {
+                    board.white_knights
+                } else {
+                    board.black_knights
+                }
+            }
+            Piece::Rook => {
+                if is_white {
+                    board.white_rooks
+                } else {
+                    board.black_rooks
+                }
+            }
+            Piece::Bishop => {
+                if is_white {
+                    board.white_bishops
+                } else {
+                    board.black_bishops
+                }
+            }
+            Piece::Queen => {
+                if is_white {
+                    board.white_queens
+                } else {
+                    board.black_queens
+                }
+            }
+            Piece::King | Piece::Castling => {
+                if is_white {
+                    board.white_king
+                } else {
+                    board.black_king
+                }
+            }
+        }
+    }
+
+    fn update_computed_moves(&mut self) {
+        self.white_pawns_pseudolegal_moves = compute_pawns_moves(&self.board, true);
+        self.white_knights_pseudolegal_moves = compute_knights_moves(&self.board, true);
+        self.white_rooks_pseudolegal_moves = compute_rooks_moves(&self.board, true);
+        self.white_bishops_pseudolegal_moves = compute_bishops_moves(&self.board, true);
+        self.white_queens_pseudolegal_moves = compute_queens_moves(&self.board, true);
+        self.white_king_pseudolegal_moves = compute_king_moves(&self.board, true);
+
+        self.black_pawns_pseudolegal_moves = compute_pawns_moves(&self.board, false);
+        self.black_knights_pseudolegal_moves = compute_knights_moves(&self.board, false);
+        self.black_rooks_pseudolegal_moves = compute_rooks_moves(&self.board, false);
+        self.black_bishops_pseudolegal_moves = compute_bishops_moves(&self.board, false);
+        self.black_queens_pseudolegal_moves = compute_queens_moves(&self.board, false);
+        self.black_king_pseudolegal_moves = compute_king_moves(&self.board, false);
+
+        self.white_attack_moves = self.white_pawns_pseudolegal_moves
+            | self.white_knights_pseudolegal_moves
+            | self.white_rooks_pseudolegal_moves
+            | self.white_bishops_pseudolegal_moves
+            | self.white_queens_pseudolegal_moves
+            | self.white_king_pseudolegal_moves;
+        self.black_attack_moves = self.black_pawns_pseudolegal_moves
+            | self.black_knights_pseudolegal_moves
+            | self.black_rooks_pseudolegal_moves
+            | self.black_bishops_pseudolegal_moves
+            | self.black_queens_pseudolegal_moves
+            | self.black_king_pseudolegal_moves;
+    }
+
+    fn get_attack_moves(&self, is_white: bool) -> u64{
+        if is_white {
+            self.black_attack_moves
+        } else {
+            self.white_attack_moves
+        }
+    }
+
+    fn get_computed_pseudolegal_moves(&self, piece_type: &Piece, is_white: bool) -> u64 {
+        match piece_type {
+            Piece::Pawn => {
+                if is_white {
+                    self.white_pawns_pseudolegal_moves
+                } else {
+                    self.black_pawns_pseudolegal_moves
+                }
+            }
+            Piece::Knight => {
+                if is_white {
+                    self.white_knights_pseudolegal_moves
+                } else {
+                    self.black_knights_pseudolegal_moves
+                }
+            }
+            Piece::Rook => {
+                if is_white {
+                    self.white_rooks_pseudolegal_moves
+                } else {
+                    self.black_rooks_pseudolegal_moves
+                }
+            }
+            Piece::Bishop => {
+                if is_white {
+                    self.white_bishops_pseudolegal_moves
+                } else {
+                    self.black_bishops_pseudolegal_moves
+                }
+            }
+            Piece::Queen => {
+                if is_white {
+                    self.white_queens_pseudolegal_moves
+                } else {
+                    self.black_queens_pseudolegal_moves
+                }
+            }
+            Piece::King | Piece::Castling => {
+                if is_white {
+                    self.white_king_pseudolegal_moves
+                } else {
+                    self.black_king_pseudolegal_moves
+                }
+            }
+        }
+    }
+
     pub fn process_move(&mut self, cmd: &str) -> Result<(), MoveError> {
         if let Ok(parsed_move) = parse_move(cmd) {
             let is_white = self.is_white();
-            let pieces;
+            let pieces = Self::get_pieces(&self.board, &parsed_move.piece, is_white);
+            let pseudolegal_moves =
+                self.get_computed_pseudolegal_moves(&parsed_move.piece, is_white);
+
+            let pinned_pieces = if is_white {
+                self.pinned_white
+            } else {
+                self.pinned_black
+            };
+
             match parsed_move.piece {
                 Piece::Pawn => {
-                    pieces = if is_white {
-                        self.board.white_pawns
-                    } else {
-                        self.board.black_pawns
-                    };
                     // special case for pawns
-                    self.process_pawn(parsed_move, pieces, is_white)?
-                }
-                Piece::Knight => {
-                    pieces = if is_white {
-                        self.board.white_knights
-                    } else {
-                        self.board.black_knights
-                    };
-                    self.process_piece(
+                    self.process_pawn(
                         parsed_move,
                         pieces,
                         is_white,
-                        resolve_knight_source,
-                        compute_knights_moves,
+                        pseudolegal_moves,
+                        pinned_pieces,
+                        self.check,
                     )?
                 }
-                Piece::Bishop => {
-                    pieces = if is_white {
-                        self.board.white_bishops
-                    } else {
-                        self.board.black_bishops
-                    };
-                    self.process_piece(
-                        parsed_move,
-                        pieces,
-                        is_white,
-                        resolve_bishop_source,
-                        compute_bishops_moves,
-                    )?
-                }
-                Piece::Queen => {
-                    pieces = if is_white {
-                        self.board.white_queens
-                    } else {
-                        self.board.black_queens
-                    };
-                    self.process_piece(
-                        parsed_move,
-                        pieces,
-                        is_white,
-                        resolve_queen_source,
-                        compute_queens_moves,
-                    )?
-                }
-                Piece::Rook => {
-                    pieces = if is_white {
-                        self.board.white_rooks
-                    } else {
-                        self.board.black_rooks
-                    };
-                    self.process_piece(
-                        parsed_move,
-                        pieces,
-                        is_white,
-                        resolve_rook_source,
-                        compute_rooks_moves,
-                    )?
-                }
-                Piece::King => {
-                    pieces = if is_white {
-                        self.board.white_king
-                    } else {
-                        self.board.black_king
-                    };
-                    self.process_piece(
-                        parsed_move,
-                        pieces,
-                        is_white,
-                        resolve_king_source,
-                        compute_king_moves,
-                    )?
-                }
+                Piece::Knight => self.process_piece(
+                    parsed_move,
+                    pieces,
+                    is_white,
+                    resolve_knight_source,
+                    pseudolegal_moves,
+                    pinned_pieces,
+                    self.check,
+                )?,
+                Piece::Bishop => self.process_piece(
+                    parsed_move,
+                    pieces,
+                    is_white,
+                    resolve_bishop_source,
+                    pseudolegal_moves,
+                    pinned_pieces,
+                    self.check,
+                )?,
+                Piece::Queen => self.process_piece(
+                    parsed_move,
+                    pieces,
+                    is_white,
+                    resolve_queen_source,
+                    pseudolegal_moves,
+                    pinned_pieces,
+                    self.check,
+                )?,
+                Piece::Rook => self.process_piece(
+                    parsed_move,
+                    pieces,
+                    is_white,
+                    resolve_rook_source,
+                    pseudolegal_moves,
+                    pinned_pieces,
+                    self.check,
+                )?,
+                Piece::King => self.process_king(
+                    parsed_move,
+                    pieces,
+                    is_white,
+                    pseudolegal_moves,
+                    pinned_pieces,
+                    self.check,
+                )?,
                 Piece::Castling => {
                     // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
                     // Ok(())
@@ -171,11 +325,15 @@ impl Game {
             // move successful, increment turn
             self.turn += 1;
 
-            // update pins for the opponent
+            self.update_computed_moves();
             self.update_pinned_state();
             self.update_check_state();
 
-            self.evaluate_game_status();
+            // TODO
+            self.board.render();
+
+            // final step is to update game status
+            self.update_game_status();
             Ok(())
         } else {
             Err(MoveError::ParseError)
@@ -187,19 +345,24 @@ impl Game {
         mv: ParsedMove,
         pawns: u64,
         is_white: bool,
+        pseudolegal_moves: u64,
+        pinned_pieces: u64,
+        check: bool,
     ) -> Result<(), MoveError> {
         let to = mv.to;
         let from = resolve_pawn_source(&self.board, &mv, self.is_white());
 
         self.validate_pawn_move(from, to, &mv, self.is_white())?;
-
-        self.validate_move_piece(
+        Self::validate_move_piece(
+            &self.board,
             from,
             to,
             pawns,
             is_white,
             mv.is_capture,
-            &compute_pawns_moves,
+            pseudolegal_moves,
+            pinned_pieces,
+            check,
         )?;
         self.move_piece(from, to, is_white, mv.is_capture)?;
 
@@ -209,22 +372,62 @@ impl Game {
         Ok(())
     }
 
-    fn process_piece<F, G>(
+    fn process_king(
+        &mut self,
+        mv: ParsedMove,
+        king: u64,
+        is_white: bool,
+        pseudolegal_moves: u64,
+        pinned_pieces: u64,
+        check: bool,
+    ) -> Result<(), MoveError> {
+        let to = mv.to;
+        let from = resolve_king_source(&self.board, &mv, self.is_white());
+
+        self.validate_king_move(to, self.is_white())?;
+        Self::validate_move_piece(
+            &self.board,
+            from,
+            to,
+            king,
+            is_white,
+            mv.is_capture,
+            pseudolegal_moves,
+            pinned_pieces,
+            check,
+        )?;
+        self.move_piece(from, to, is_white, mv.is_capture)?;
+
+        Ok(())
+    }
+
+    fn process_piece<F>(
         &mut self,
         mv: ParsedMove,
         pieces: u64,
         is_white: bool,
         source_resolver_fn: F,
-        compute_move_fn: G,
+        pseudolegal_moves: u64,
+        pinned_pieces: u64,
+        check: bool,
     ) -> Result<(), MoveError>
     where
         F: Fn(&Board, &ParsedMove, bool) -> u64,
-        G: Fn(&Board, bool) -> u64,
     {
         let to = mv.to;
         let from = source_resolver_fn(&self.board, &mv, self.is_white());
 
-        self.validate_move_piece(from, to, pieces, is_white, mv.is_capture, compute_move_fn)?;
+        Self::validate_move_piece(
+            &self.board,
+            from,
+            to,
+            pieces,
+            is_white,
+            mv.is_capture,
+            pseudolegal_moves,
+            pinned_pieces,
+            check,
+        )?;
         self.move_piece(from, to, is_white, mv.is_capture)
     }
 
@@ -235,7 +438,13 @@ impl Game {
     }
 
     // pawn specific move validation (diagonal capture, promotion, etc)
-    fn validate_pawn_move(&self, from: u64, to: u64, mv: &ParsedMove, is_white: bool) -> Result<(), MoveError> {
+    fn validate_pawn_move(
+        &self,
+        from: u64,
+        to: u64,
+        mv: &ParsedMove,
+        is_white: bool,
+    ) -> Result<(), MoveError> {
         if mv.is_capture {
             let diagonal_moves = if is_white {
                 (from << 7) | (from << 9) // diagonal forward left/right
@@ -243,8 +452,12 @@ impl Game {
                 (from >> 7) | (from >> 9) // diagonal backward left/right
             };
             if to & diagonal_moves == 0 {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::PawnNonDiagonalCapture));
+                return Err(MoveError::InvalidMove(
+                    InvalidMoveReason::PawnNonDiagonalCapture,
+                ));
             }
+
+            // TODO en passant check
         }
 
         if let Some(SpecialMove::Promotion(_)) = mv.special_move {
@@ -256,26 +469,33 @@ impl Game {
             };
 
             if !correct_rank {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::PawnInvalidPromotion));
+                return Err(MoveError::InvalidMove(
+                    InvalidMoveReason::PawnInvalidPromotion,
+                ));
             }
         }
-
-        // TODO check for enpassant?
         Ok(())
     }
 
+    // king specific move validation (can't enter into attack ray)
+    fn validate_king_move(&self, to: u64, is_white: bool) -> Result<(), MoveError> {
+        let opponent_attacks = self.get_attack_moves(is_white);
+
+        if to & opponent_attacks != 0 {
+            Err(MoveError::Checked)
+        } else {
+            Ok(())
+        }
+    }
+
     fn validate_move_pinned_piece(
-        &self,
+        board: &Board,
         from: u64,
         to: u64,
         pinned_pieces: u64,
         is_white: bool,
     ) -> bool {
-        let king = if is_white {
-            self.board.white_king
-        } else {
-            self.board.black_king
-        };
+        let king = Self::get_pieces(board, &Piece::King, is_white);
 
         if from & pinned_pieces == 0 {
             return true; // no pin, all good
@@ -293,27 +513,53 @@ impl Game {
         false
     }
 
-    fn validate_move_check(&self, from: u64, to: u64, is_white: bool) -> bool {
-        let mut simulated_board = self.board.clone();
+    fn validate_move_check(board: &Board, from: u64, to: u64, is_white: bool) -> bool {
+        let mut simulated_board = board.clone();
+        let king;
+        let opponent_king;
+        let opponent_pieces;
+        if is_white {
+            king = simulated_board.white_king;
+            opponent_king = simulated_board.black_king;
+            opponent_pieces= simulated_board.black_pieces ^ opponent_king;
+        } else {
+            king = simulated_board.black_king;
+            opponent_king = simulated_board.white_king;
+            opponent_pieces= simulated_board.white_pieces ^ opponent_king;
+        }
+
+        // do not allow capturing king
+        if to == opponent_king {
+            return false;
+        }
+
         simulated_board.move_piece(from, to, is_white);
-        Self::is_in_check(&simulated_board, is_white)
+        if opponent_pieces & to != 0 {
+            // simulate capture
+            simulated_board.remove_piece(to, !is_white);
+        }
+
+
+        // if attack_moves & to
+        Self::is_in_check_simulated_move(&simulated_board, is_white)
     }
 
-    fn validate_move_piece<F>(
-        &self,
+    fn validate_move_piece(
+        board: &Board,
         from: u64,
         to: u64,
         pieces: u64,
         is_white: bool,
         is_capture: bool,
-        compute_moves: F,
-    ) -> Result<(), MoveError>
-    where
-        F: Fn(&Board, bool) -> u64,
-    {
-        let pseudolegal_moves = compute_moves(&self.board, is_white);
+        pseudolegal_moves: u64,
+        pinned_pieces: u64,
+        check: bool,
+        // attack_moves: u64,
+    ) -> Result<(), MoveError> {
         if from == to {
-            return Err(MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget));
+            return Err(MoveError::InvalidMove(
+                InvalidMoveReason::InvalidSourceOrTarget,
+            ));
         }
 
         if from == 0 || to == 0 {
@@ -329,41 +575,41 @@ impl Game {
         }
 
         if (from & pieces) == 0 {
-            return Err(MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget));
+            return Err(MoveError::InvalidMove(
+                InvalidMoveReason::InvalidSourceOrTarget,
+            ));
         }
 
         if (to & pseudolegal_moves) == 0 {
-            return Err(MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget));
+            return Err(MoveError::InvalidMove(
+                InvalidMoveReason::InvalidSourceOrTarget,
+            ));
         }
 
-        let pinned = if is_white {
-            self.pinned_white
-        } else {
-            self.pinned_black
-        };
-        if (from & pinned) != 0 {
-            if !self.validate_move_pinned_piece(from, to, pinned, is_white) {
-                return Err(MoveError::Pinned);
-            }
-        }
-
-        let target_must_be_captured = self.board.is_capture(to, is_white);
+        let target_must_be_captured = board.is_capture(to, is_white);
         if is_capture != target_must_be_captured {
             return Err(MoveError::InvalidMove(InvalidMoveReason::NotCaptureMove));
         }
 
         let opponent_king = if is_white {
-            self.board.black_king
+            board.black_king
         } else {
-            self.board.white_king
+            board.white_king
         };
         if is_capture && (to & opponent_king != 0) {
             return Err(MoveError::InvalidMove(InvalidMoveReason::KingCaptureMove));
         }
 
+        if (from & pinned_pieces) != 0 {
+            if !Self::validate_move_pinned_piece(board, from, to, pinned_pieces, is_white) {
+                return Err(MoveError::Pinned);
+            }
+        }
+
         // test for check
-        if Self::is_in_check(&self.board, is_white) {
-            if self.validate_move_check(from, to, is_white) {
+        if check {
+            // if Self::is_in_check(board, is_white) {
+            if Self::validate_move_check(board, from, to, is_white) {
                 return Err(MoveError::Checked);
             }
         }
@@ -377,8 +623,7 @@ impl Game {
         to: u64,
         is_white: bool,
         is_capture: bool,
-    ) -> Result<(), MoveError>
-where {
+    ) -> Result<(), MoveError> {
         if is_capture {
             self.board.move_piece(from, to, is_white);
             self.board.remove_piece(to, !is_white);
@@ -475,34 +720,28 @@ where {
 
     // pin handling
     fn update_pinned_state(&mut self) {
-        self.pinned_white = Self::detect_pins(&self.board, true);
-        self.pinned_black = Self::detect_pins(&self.board, false);
+        self.pinned_white = self.detect_pins(true);
+        self.pinned_black = self.detect_pins(false);
     }
 
-    fn detect_pins(board: &Board, is_white: bool) -> u64 {
-        let king = if is_white {
-            board.white_king
-        } else {
-            board.black_king
-        };
+    fn detect_pins(&self, is_white: bool) -> u64 {
+        let king = Self::get_pieces(&self.board, &Piece::King, is_white);
         let king_idx = king.trailing_zeros();
 
         // own pieces exclude king
         let own_pieces = if is_white {
-            board.white_pieces ^ king
+            self.board.white_pieces ^ king
         } else {
-            board.black_pieces ^ king
+            self.board.black_pieces ^ king
         };
 
-        let opponent_sliding_moves = compute_rooks_moves(board, !is_white)
-            | compute_bishops_moves(board, !is_white)
-            | compute_queens_moves(board, !is_white);
+        let opponent_sliding_moves = self.get_computed_pseudolegal_moves(&Piece::Rook, !is_white)
+            | self.get_computed_pseudolegal_moves(&Piece::Bishop, !is_white)
+            | self.get_computed_pseudolegal_moves(&Piece::Queen, !is_white);
 
-        let opponent_sliding_pieces = if is_white {
-            board.black_rooks | board.black_bishops | board.black_queens
-        } else {
-            board.white_rooks | board.white_bishops | board.white_queens
-        };
+        let opponent_sliding_pieces = Self::get_pieces(&self.board, &Piece::Rook, !is_white)
+            | Self::get_pieces(&self.board, &Piece::Bishop, !is_white)
+            | Self::get_pieces(&self.board, &Piece::Queen, !is_white);
 
         let mut pinned_pieces: u64 = 0;
         // pin only happened through sliding pieces, check all sliding directions
@@ -579,11 +818,23 @@ where {
     }
 
     fn update_check_state(&mut self) {
-        self.check = Self::is_in_check(&self.board, self.is_white());
+        self.check = self.is_in_check(self.is_white());
     }
 
     // check if king is in check
-    fn is_in_check(board: &Board, is_white: bool) -> bool {
+    fn is_in_check(&self, is_white: bool) -> bool {
+        let king = Self::get_pieces(&self.board, &Piece::King, is_white);
+        let opponent_attacks = self.get_attack_moves(is_white);
+        king & opponent_attacks != 0
+    }
+
+    /// perform is_in_check for simulated move. This is EXPENSIVE because
+    /// it has to recompute all the opponent moves and this must be called
+    /// because if simulated move completely alter attack moves, then
+    /// cached version is no longer valid (ie. capturing attacking piece,
+    /// blocking sliding piece, etc)
+    /// delta attack move can be implemented but will be rather tricky...
+    fn is_in_check_simulated_move(board: &Board, is_white: bool) -> bool {
         let king = if is_white {
             board.white_king
         } else {
@@ -601,12 +852,19 @@ where {
 
     fn has_valid_move(
         &self,
-        mut pieces: u64,
+        piece: &Piece,
         mut pseudolegal_moves: u64,
         is_white: bool,
         opponent_pieces: u64,
-        opponent_king: u64,
     ) -> bool {
+        let pinned = if is_white {
+            self.pinned_white
+        } else {
+            self.pinned_black
+        };
+
+        let mut pieces = Self::get_pieces(&self.board, piece, is_white);
+
         while pieces != 0 {
             let piece_idx = pieces.trailing_zeros() as u64;
             let piece_pos = 1 << piece_idx;
@@ -617,22 +875,41 @@ where {
 
                 let is_capture = move_idx & opponent_pieces != 0;
 
-                if self
-                    .validate_move_piece(
-                        piece_pos,
-                        single_move,
-                        piece_pos,
-                        is_white,
-                        is_capture,
-                        |_: &Board, _: bool| -> u64 { single_move },
-                    )
-                    .is_ok()
+                // remove processed move
+                pseudolegal_moves &= pseudolegal_moves - 1;
+
+                match piece {
+                    Piece::Pawn => {
+                        // if self.validate_pawn_move()
+                    }
+                    Piece::Knight => {}
+                    Piece::Rook => {}
+                    Piece::Bishop => {}
+                    Piece::Queen => {}
+                    Piece::King => {
+                        if self.validate_king_move(single_move, is_white).is_err() {
+                            // skip
+                            continue;
+                        }
+                    }
+                    _ => {}
+                }
+
+                if Self::validate_move_piece(
+                    &self.board,
+                    piece_pos,
+                    single_move,
+                    piece_pos,
+                    is_white,
+                    is_capture,
+                    single_move,
+                    pinned,
+                    self.check,
+                )
+                .is_ok()
                 {
                     return true;
                 }
-
-                // remove processed move
-                pseudolegal_moves &= pseudolegal_moves - 1;
             }
             // remove the processed piece
             pieces &= pieces - 1;
@@ -677,7 +954,7 @@ where {
         !insufficient
     }
 
-    fn evaluate_game_status(&mut self) {
+    fn update_game_status(&mut self) {
         // check for sufficient material
         if !Self::has_sufficient_materials(&self.board) {
             self.status = Status::Draw;
@@ -686,49 +963,15 @@ where {
 
         let is_white = self.is_white();
 
-        let knights_moves = compute_knights_moves(&self.board, is_white);
-        let rooks_moves = compute_rooks_moves(&self.board, is_white);
-        let bishops_moves = compute_bishops_moves(&self.board, is_white);
-        let queens_moves = compute_queens_moves(&self.board, is_white);
-        let pawns_moves = compute_pawns_moves(&self.board, is_white);
-        let king_moves = compute_knights_moves(&self.board, is_white);
+        let knights_moves = self.get_computed_pseudolegal_moves(&Piece::Knight, is_white);
+        let rooks_moves = self.get_computed_pseudolegal_moves(&Piece::Rook, is_white);
+        let bishops_moves = self.get_computed_pseudolegal_moves(&Piece::Bishop, is_white);
+        let queens_moves = self.get_computed_pseudolegal_moves(&Piece::Queen, is_white);
+        let pawns_moves = self.get_computed_pseudolegal_moves(&Piece::Pawn, is_white);
+        let king_moves = self.get_computed_pseudolegal_moves(&Piece::King, is_white);
 
-        let knights = if is_white {
-            self.board.white_knights
-        } else {
-            self.board.black_knights
-        };
-        let rooks = if is_white {
-            self.board.white_rooks
-        } else {
-            self.board.black_rooks
-        };
-        let bishops = if is_white {
-            self.board.white_bishops
-        } else {
-            self.board.black_bishops
-        };
-        let queens = if is_white {
-            self.board.white_queens
-        } else {
-            self.board.black_queens
-        };
-        let pawns = if is_white {
-            self.board.white_pawns
-        } else {
-            self.board.black_pawns
-        };
-        let king = if is_white {
-            self.board.white_king
-        } else {
-            self.board.black_king
-        };
+        render_bitboard(&king_moves, 'k');
 
-        let opponent_king = if is_white {
-            self.board.black_king
-        } else {
-            self.board.white_king
-        };
         let opponent_pieces = if is_white {
             self.board.black_pieces
         } else {
@@ -736,35 +979,12 @@ where {
         };
 
         let found_legal_move =
-            self.has_valid_move(
-                knights,
-                knights_moves,
-                is_white,
-                opponent_pieces,
-                opponent_king,
-            ) || self.has_valid_move(rooks, rooks_moves, is_white, opponent_pieces, opponent_king)
-                || self.has_valid_move(
-                    bishops,
-                    bishops_moves,
-                    is_white,
-                    opponent_pieces,
-                    opponent_king,
-                )
-                || self.has_valid_move(
-                    queens,
-                    queens_moves,
-                    is_white,
-                    opponent_pieces,
-                    opponent_king,
-                )
-                || self.has_valid_move(
-                    pawns,
-                    pawns_moves,
-                    is_white,
-                    opponent_pieces,
-                    opponent_king,
-                )
-                || self.has_valid_move(king, king_moves, is_white, opponent_pieces, opponent_king);
+            self.has_valid_move(&Piece::Knight, knights_moves, is_white, opponent_pieces)
+                || self.has_valid_move(&Piece::Rook, rooks_moves, is_white, opponent_pieces)
+                || self.has_valid_move(&Piece::Bishop, bishops_moves, is_white, opponent_pieces)
+                || self.has_valid_move(&Piece::Queen, queens_moves, is_white, opponent_pieces)
+                || self.has_valid_move(&Piece::Pawn, pawns_moves, is_white, opponent_pieces)
+                || self.has_valid_move(&Piece::King, king_moves, is_white, opponent_pieces);
 
         if found_legal_move {
             self.status = Status::Ongoing
@@ -808,46 +1028,58 @@ pub mod tests {
         let game = Game::default();
 
         // check for diagonal capture
-        assert!(game.validate_pawn_move(
-            bitboard_single('e', 2).unwrap(),
-            bitboard_single('d', 3).unwrap(),
-            &parse_move("exd3").unwrap(),
-            true
-        ).is_ok());
+        assert!(game
+            .validate_pawn_move(
+                bitboard_single('e', 2).unwrap(),
+                bitboard_single('d', 3).unwrap(),
+                &parse_move("exd3").unwrap(),
+                true
+            )
+            .is_ok());
 
-        assert!(!game.validate_pawn_move(
-            bitboard_single('e', 2).unwrap(),
-            bitboard_single('e', 3).unwrap(),
-            &parse_move("exe3").unwrap(),
-            true
-        ).is_ok());
+        assert!(!game
+            .validate_pawn_move(
+                bitboard_single('e', 2).unwrap(),
+                bitboard_single('e', 3).unwrap(),
+                &parse_move("exe3").unwrap(),
+                true
+            )
+            .is_ok());
 
         // check for promotion
-        assert!(game.validate_pawn_move(
-            bitboard_single('e', 7).unwrap(),
-            bitboard_single('e', 8).unwrap(),
-            &parse_move("e8=Q").unwrap(),
-            true
-        ).is_ok());
-        assert!(!game.validate_pawn_move(
-            bitboard_single('e', 6).unwrap(),
-            bitboard_single('e', 7).unwrap(),
-            &parse_move("e7=Q").unwrap(),
-            true
-        ).is_ok());
+        assert!(game
+            .validate_pawn_move(
+                bitboard_single('e', 7).unwrap(),
+                bitboard_single('e', 8).unwrap(),
+                &parse_move("e8=Q").unwrap(),
+                true
+            )
+            .is_ok());
+        assert!(!game
+            .validate_pawn_move(
+                bitboard_single('e', 6).unwrap(),
+                bitboard_single('e', 7).unwrap(),
+                &parse_move("e7=Q").unwrap(),
+                true
+            )
+            .is_ok());
 
-        assert!(game.validate_pawn_move(
-            bitboard_single('e', 2).unwrap(),
-            bitboard_single('e', 1).unwrap(),
-            &parse_move("e1=Q").unwrap(),
-            false
-        ).is_ok());
-        assert!(!game.validate_pawn_move(
-            bitboard_single('e', 3).unwrap(),
-            bitboard_single('e', 2).unwrap(),
-            &parse_move("e2=Q").unwrap(),
-            false
-        ).is_ok());
+        assert!(game
+            .validate_pawn_move(
+                bitboard_single('e', 2).unwrap(),
+                bitboard_single('e', 1).unwrap(),
+                &parse_move("e1=Q").unwrap(),
+                false
+            )
+            .is_ok());
+        assert!(!game
+            .validate_pawn_move(
+                bitboard_single('e', 3).unwrap(),
+                bitboard_single('e', 2).unwrap(),
+                &parse_move("e2=Q").unwrap(),
+                false
+            )
+            .is_ok());
     }
 
     #[test]
@@ -859,11 +1091,20 @@ pub mod tests {
             &mut game,
             &[
                 // e3 is blocked by white piece
-                ("e3", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),
+                (
+                    "e3",
+                    MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget),
+                ),
                 // g3 is blocked by black piece
-                ("g3", MoveError::InvalidMove(InvalidMoveReason::NotCaptureMove)),
+                (
+                    "g3",
+                    MoveError::InvalidMove(InvalidMoveReason::NotCaptureMove),
+                ),
                 // can't skip g3 because there's a black piece
-                ("g4", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),
+                (
+                    "g4",
+                    MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget),
+                ),
             ],
         );
         process_moves(&mut game, &["h3", "a5"]);
@@ -874,10 +1115,19 @@ pub mod tests {
         let board = Board::from_fen("7k/p7/8/8/3p4/4P1p1/P3P1PP/K7");
         let mut game = Game::new(board);
         // g3 can only be captured diagonally from h2
-        process_moves_error(&mut game, &[
-            ("gxg3", MoveError::InvalidMove(InvalidMoveReason::PawnNonDiagonalCapture)),
-            ("fxg3", MoveError::InvalidMove(InvalidMoveReason::PawnNonDiagonalCapture)),
-        ]);
+        process_moves_error(
+            &mut game,
+            &[
+                (
+                    "gxg3",
+                    MoveError::InvalidMove(InvalidMoveReason::PawnNonDiagonalCapture),
+                ),
+                (
+                    "fxg3",
+                    MoveError::InvalidMove(InvalidMoveReason::PawnNonDiagonalCapture),
+                ),
+            ],
+        );
         process_moves(&mut game, &["exd4"]);
     }
 
@@ -901,10 +1151,22 @@ pub mod tests {
         );
 
         // promotion doesn't work if not rank 8 for white
-        process_moves_error(&mut game, &[("a3=R", MoveError::InvalidMove(InvalidMoveReason::PawnInvalidPromotion))]);
+        process_moves_error(
+            &mut game,
+            &[(
+                "a3=R",
+                MoveError::InvalidMove(InvalidMoveReason::PawnInvalidPromotion),
+            )],
+        );
         game.turn = 4; // switch to black
-        // promotion doesn't work if not rank 1 for black
-        process_moves_error(&mut game, &[("a6=R", MoveError::InvalidMove(InvalidMoveReason::PawnInvalidPromotion))]);
+                       // promotion doesn't work if not rank 1 for black
+        process_moves_error(
+            &mut game,
+            &[(
+                "a6=R",
+                MoveError::InvalidMove(InvalidMoveReason::PawnInvalidPromotion),
+            )],
+        );
     }
 
     #[test]
@@ -912,21 +1174,30 @@ pub mod tests {
         let board = Board::from_fen("kn6/8/1n6/8/2P5/4pp2/4P3/K3N1N1");
         let mut game = Game::new(board);
 
-        process_moves_error(&mut game, &[
-            // blocked by own piece
-            ("Ne2", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),
-            ("Nxf3", MoveError::AmbiguousSource),
-            // must capture
-            ("Ngf3", MoveError::InvalidMove(InvalidMoveReason::NotCaptureMove)),
-        ]);
-        process_moves(&mut game, &[
-            "Ngxf3",
-            "Nxc4", // black capture c4,
-            // additional detailed selectors
-            "N3e5",
-            "Nb8a6",
-            "Ne5xc4",
-        ]);
+        process_moves_error(
+            &mut game,
+            &[
+                // blocked by own piece
+                (
+                    "Ne2",
+                    MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget),
+                ),
+                ("Nxf3", MoveError::AmbiguousSource),
+                // must capture
+                (
+                    "Ngf3",
+                    MoveError::InvalidMove(InvalidMoveReason::NotCaptureMove),
+                ),
+            ],
+        );
+        process_moves(
+            &mut game,
+            &[
+                "Ngxf3", "Nxc4", // black capture c4,
+                // additional detailed selectors
+                "N3e5", "Nb8a6", "Ne5xc4",
+            ],
+        );
     }
 
     #[test]
@@ -936,7 +1207,10 @@ pub mod tests {
         process_moves_error(
             &mut game,
             &[
-                ("e5", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)), // blocked by opponent
+                (
+                    "e5",
+                    MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget),
+                ), // blocked by opponent
             ],
         );
         process_moves(&mut game, &["Bb5", "Nf6"]);
@@ -945,7 +1219,10 @@ pub mod tests {
             &mut game,
             &[
                 ("Rb1", MoveError::AmbiguousSource), // ambiguous
-                ("Rab1", MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),    // blocked by own piece and ambiguous
+                (
+                    "Rab1",
+                    MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget),
+                ), // blocked by own piece and ambiguous
             ],
         );
         process_moves(
@@ -957,8 +1234,26 @@ pub mod tests {
     }
 
     #[test]
+    fn test_valid_move_remove_check() {
+        let board = Board::from_fen("8/4q1k1/8/5P2/8/8/8/3K4");
+        let mut game = Game::new(board);
+        // neither in check
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
+        process_moves(&mut game, &["f6"]);
+        // black in check
+        assert!(!game.is_in_check(true));
+        assert!(game.is_in_check(false));
+        process_moves(&mut game, &["Qxf6"]);
+        // neither in check after attacking piece is captured
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
+    }
+
+    #[test]
     fn test_detect_pins() {
         let board = Board::from_fen("8/8/8/4q3/7b/k7/1r1PPPP1/r1B1K3");
+        let game = Game::new(board);
 
         assert_eq!(
             PositionBuilder::new()
@@ -966,13 +1261,10 @@ pub mod tests {
                 .add_piece('e', 2)
                 .add_piece('f', 2)
                 .build(),
-            Game::detect_pins(&board, true)
+            game.detect_pins(true)
         );
 
-        assert_eq!(
-            bitboard_single('b', 2).unwrap(),
-            Game::detect_pins(&board, false)
-        );
+        assert_eq!(bitboard_single('b', 2).unwrap(), game.detect_pins(false));
     }
 
     #[test]
@@ -1083,7 +1375,13 @@ pub mod tests {
         let board = Board::from_fen("4k3/3P4/8/8/8/8/8/4K3");
 
         let mut game = Game::new(board);
-        process_moves_error(&mut game, &[("dxe8", MoveError::InvalidMove(InvalidMoveReason::KingCaptureMove))]);
+        process_moves_error(
+            &mut game,
+            &[(
+                "dxe8",
+                MoveError::InvalidMove(InvalidMoveReason::KingCaptureMove),
+            )],
+        );
     }
 
     #[test]
@@ -1091,19 +1389,19 @@ pub mod tests {
         let board = Board::from_fen("4k3/8/4r3/4b3/8/8/3B4/4K3");
         let mut game = Game::new(board);
         game.turn = 2; // black's turn
-        assert!(!Game::is_in_check(&game.board, game.is_white()));
+        assert!(!game.is_in_check(game.is_white()));
         // discovered check
         process_moves(&mut game, &["Bg3"]);
         // white is checked
-        assert!(Game::is_in_check(&game.board, game.is_white()));
+        assert!(game.is_in_check(game.is_white()));
         // white move
         process_moves(&mut game, &["Kd1"]);
         // black is not checked
-        assert!(!Game::is_in_check(&game.board, game.is_white()));
+        assert!(!game.is_in_check(game.is_white()));
         // black move
         process_moves(&mut game, &["Kd7"]);
         // white is not checked
-        assert!(!Game::is_in_check(&game.board, game.is_white()));
+        assert!(!game.is_in_check(game.is_white()));
     }
 
     #[test]
@@ -1111,45 +1409,48 @@ pub mod tests {
         let board = Board::from_fen("3k4/8/3Nr3/8/8/8/3R4/K7");
         let mut game = Game::new(board);
         // neither in check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
 
         // discovered check
         process_moves(&mut game, &["Nb7"]);
 
         // black is checked
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(game.is_in_check(false));
 
         // black can't move rook, king is still checked
-        process_moves_error(&mut game, &[
-            ("Ra6", MoveError::Checked),
-            ("Re1", MoveError::Checked),
-            // can't move king to position that's still being checked
-            ("Kd7", MoveError::Checked),
-        ]);
+        process_moves_error(
+            &mut game,
+            &[
+                ("Ra6", MoveError::Checked),
+                ("Re1", MoveError::Checked),
+                // can't move king to position that's still being checked
+                ("Kd7", MoveError::Checked),
+            ],
+        );
 
         // black is checked
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(game.is_in_check(false));
 
         // black move king to uncheck
         process_moves(&mut game, &["Ke8"]);
         // neither in check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
 
         // move white king
         process_moves(&mut game, &["Kb1", "Rb6"]);
         // white is now checked
-        assert!(Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(game.is_in_check(true));
+        assert!(!game.is_in_check(false));
 
         // move white rook to block check
         process_moves(&mut game, &["Rb2"]);
         // neither in check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
     }
 
     #[test]
@@ -1159,22 +1460,22 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         process_moves(&mut game, &["Rh8"]);
 
         // black in check but not mate
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(game.is_in_check(false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Rg8"]);
         // // blocked the check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         process_moves(&mut game, &["Rxg8"]);
         // black is lost
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(game.is_in_check(false));
         assert_eq!(Status::Checkmate, game.status);
     }
 
@@ -1185,13 +1486,13 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Kxb2"]);
 
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         assert_eq!(Status::Draw, game.status);
 
         // knight and bishop
@@ -1199,13 +1500,13 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Nxc3"]);
 
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         assert_eq!(Status::Draw, game.status);
 
         // 2 knights
@@ -1213,29 +1514,73 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Nxh2"]);
 
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
+        assert_eq!(Status::Draw, game.status);
+    }
+
+    #[test]
+    fn test_draw_no_legal_move_king_blocking() {
+        let board = Board::from_fen("7k/8/7K/7Q/8/8/8/8");
+        let mut game = Game::new(board);
+
+        // neither in check
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
+        assert_eq!(Status::Ongoing, game.status);
+        process_moves(&mut game, &["Qg5"]);
+
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         assert_eq!(Status::Draw, game.status);
     }
 
     #[test]
     fn test_draw_no_legal_move() {
-        let board = Board::from_fen("7k/8/7K/7Q/8/8/8/8");
+        let board = Board::from_fen("7k/8/8/6Q1/8/8/8/K7");
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         assert_eq!(Status::Ongoing, game.status);
-        process_moves(&mut game, &["Qg5"]);
+        process_moves(&mut game, &["Qg6"]);
 
-        assert!(!Game::is_in_check(&game.board, true));
-        assert!(!Game::is_in_check(&game.board, false));
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
+        assert_eq!(Status::Draw, game.status);
+    }
+
+    #[test]
+    fn test_draw_no_legal_move_pawn() {
+        let board = Board::from_fen("7k/8/6KP/8/8/8/8/8");
+        let mut game = Game::new(board);
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
+        assert_eq!(Status::Ongoing, game.status);
+        process_moves(&mut game, &["h7"]);
+
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
+        assert_eq!(Status::Draw, game.status);
+    }
+
+    #[test]
+    fn test_draw_no_legal_move_pinned() {
+        let board = Board::from_fen("7k/5P1n/8/6N1/8/1R6/8/K6R");
+        let mut game = Game::new(board);
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
+        assert_eq!(Status::Ongoing, game.status);
+        process_moves(&mut game, &["Ne6"]);
+
+        assert!(!game.is_in_check(true));
+        assert!(!game.is_in_check(false));
         assert_eq!(Status::Draw, game.status);
     }
 
