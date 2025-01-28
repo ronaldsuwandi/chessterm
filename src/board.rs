@@ -213,6 +213,10 @@ impl Board {
         self.black_queens_pseudolegal_moves = compute_queens_moves(&self, false);
         self.black_king_pseudolegal_moves = compute_king_moves(&self, false);
 
+        self.update_attack_moves();
+    }
+
+    pub fn update_attack_moves(&mut self) {
         self.white_attack_moves = self.white_pawns_pseudolegal_moves
             | self.white_knights_pseudolegal_moves
             | self.white_rooks_pseudolegal_moves
@@ -225,7 +229,6 @@ impl Board {
             | self.black_bishops_pseudolegal_moves
             | self.black_queens_pseudolegal_moves
             | self.black_king_pseudolegal_moves;
-
     }
 
     /// check if the target position on the board is a capture move or not

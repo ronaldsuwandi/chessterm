@@ -127,14 +127,6 @@ impl Game {
             }
         }
     }
-    
-    fn get_attack_moves(&self, is_white: bool) -> u64{
-        if is_white {
-            self.board.black_attack_moves
-        } else {
-            self.board.white_attack_moves
-        }
-    }
 
     fn get_computed_pseudolegal_moves(&self, piece_type: &Piece, is_white: bool) -> u64 {
         match piece_type {
@@ -251,16 +243,13 @@ impl Game {
                     pinned_pieces,
                     self.check,
                 )?,
-                Piece::Castling => self.process_castling(
-                    parsed_move,
-                    is_white,
-                    pinned_pieces,
-                    self.check,
-                )?
+                Piece::Castling => {
+                    self.process_castling(parsed_move, is_white, pinned_pieces, self.check)?
+                }
             }
             // move successful, increment turn
             self.turn += 1;
-            
+
             self.board.update_compute_moves();
             self.update_pinned_state();
             self.update_check_state();
@@ -270,6 +259,7 @@ impl Game {
 
             // final step is to update game status
             self.update_game_status();
+            println!("game status = {:?}", self.status);
             Ok(())
         } else {
             Err(MoveError::ParseError)
@@ -397,7 +387,6 @@ impl Game {
         pinned_pieces: u64,
         check: bool,
     ) -> Result<(), MoveError> {
-
         // TODO do this
         // 1. which side am I castling on, SpecialMove is optional enum that can be CastlingKing or CastlingQueen
         // 2. make sure I still have the right for castling
@@ -513,7 +502,7 @@ impl Game {
 
     // king specific move validation (can't enter into attack ray)
     fn validate_king_move(&self, to: u64, is_white: bool) -> Result<(), MoveError> {
-        let opponent_attacks = self.get_attack_moves(is_white);
+        let opponent_attacks = Self::get_attack_moves(&self.board, is_white);
 
         if to & opponent_attacks != 0 {
             Err(MoveError::Checked)
@@ -555,11 +544,11 @@ impl Game {
         if is_white {
             king = simulated_board.white_king;
             opponent_king = simulated_board.black_king;
-            opponent_pieces= simulated_board.black_pieces ^ opponent_king;
+            opponent_pieces = simulated_board.black_pieces ^ opponent_king;
         } else {
             king = simulated_board.black_king;
             opponent_king = simulated_board.white_king;
-            opponent_pieces= simulated_board.white_pieces ^ opponent_king;
+            opponent_pieces = simulated_board.white_pieces ^ opponent_king;
         }
 
         // do not allow capturing king
@@ -573,9 +562,12 @@ impl Game {
             simulated_board.remove_piece(to, !is_white);
         }
 
+        // update the whole moves for simplicity, this helps with capture and
+        // blocking move
+        simulated_board.update_compute_moves();
 
         // if attack_moves & to
-        Self::is_in_check_simulated_move(&simulated_board, is_white)
+        Self::is_in_check(&simulated_board, is_white)
     }
 
     fn validate_move_piece(
@@ -768,13 +760,21 @@ impl Game {
     }
 
     fn update_check_state(&mut self) {
-        self.check = self.is_in_check(self.is_white());
+        self.check = Self::is_in_check(&self.board, self.is_white());
+    }
+
+    fn get_attack_moves(board: &Board, is_white: bool) -> u64 {
+        if is_white {
+            board.black_attack_moves
+        } else {
+            board.white_attack_moves
+        }
     }
 
     // check if king is in check
-    fn is_in_check(&self, is_white: bool) -> bool {
-        let king = Self::get_pieces(&self.board, &Piece::King, is_white);
-        let opponent_attacks = self.get_attack_moves(is_white);
+    fn is_in_check(board: &Board, is_white: bool) -> bool {
+        let king = Self::get_pieces(board, &Piece::King, is_white);
+        let opponent_attacks = Self::get_attack_moves(board, is_white);
         king & opponent_attacks != 0
     }
 
@@ -864,8 +864,6 @@ impl Game {
             // remove the processed piece
             pieces &= pieces - 1;
         }
-
-        // TODO implement
         false
     }
 
@@ -1188,16 +1186,16 @@ pub mod tests {
         let board = Board::from_fen("8/4q1k1/8/5P2/8/8/8/3K4");
         let mut game = Game::new(board);
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         process_moves(&mut game, &["f6"]);
         // black in check
-        assert!(!game.is_in_check(true));
-        assert!(game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(Game::is_in_check(&game.board, false));
         process_moves(&mut game, &["Qxf6"]);
         // neither in check after attacking piece is captured
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
     }
 
     #[test]
@@ -1339,19 +1337,19 @@ pub mod tests {
         let board = Board::from_fen("4k3/8/4r3/4b3/8/8/3B4/4K3");
         let mut game = Game::new(board);
         game.turn = 2; // black's turn
-        assert!(!game.is_in_check(game.is_white()));
+        assert!(!Game::is_in_check(&game.board, game.is_white()));
         // discovered check
         process_moves(&mut game, &["Bg3"]);
         // white is checked
-        assert!(game.is_in_check(game.is_white()));
+        assert!(Game::is_in_check(&game.board, game.is_white()));
         // white move
         process_moves(&mut game, &["Kd1"]);
         // black is not checked
-        assert!(!game.is_in_check(game.is_white()));
+        assert!(!Game::is_in_check(&game.board, game.is_white()));
         // black move
         process_moves(&mut game, &["Kd7"]);
         // white is not checked
-        assert!(!game.is_in_check(game.is_white()));
+        assert!(!Game::is_in_check(&game.board, game.is_white()));
     }
 
     #[test]
@@ -1359,15 +1357,15 @@ pub mod tests {
         let board = Board::from_fen("3k4/8/3Nr3/8/8/8/3R4/K7");
         let mut game = Game::new(board);
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
 
         // discovered check
         process_moves(&mut game, &["Nb7"]);
 
         // black is checked
-        assert!(!game.is_in_check(true));
-        assert!(game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(Game::is_in_check(&game.board, false));
 
         // black can't move rook, king is still checked
         process_moves_error(
@@ -1381,26 +1379,26 @@ pub mod tests {
         );
 
         // black is checked
-        assert!(!game.is_in_check(true));
-        assert!(game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(Game::is_in_check(&game.board, false));
 
         // black move king to uncheck
         process_moves(&mut game, &["Ke8"]);
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
 
         // move white king
         process_moves(&mut game, &["Kb1", "Rb6"]);
         // white is now checked
-        assert!(game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
 
         // move white rook to block check
         process_moves(&mut game, &["Rb2"]);
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
     }
 
     #[test]
@@ -1410,22 +1408,23 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         process_moves(&mut game, &["Rh8"]);
 
         // black in check but not mate
-        assert!(!game.is_in_check(true));
-        assert!(game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Rg8"]);
+
         // // blocked the check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         process_moves(&mut game, &["Rxg8"]);
         // black is lost
-        assert!(!game.is_in_check(true));
-        assert!(game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(Game::is_in_check(&game.board, false));
         assert_eq!(Status::Checkmate, game.status);
     }
 
@@ -1436,13 +1435,13 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Kxb2"]);
 
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
 
         // knight and bishop
@@ -1450,13 +1449,13 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Nxc3"]);
 
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
 
         // 2 knights
@@ -1464,13 +1463,13 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Nxh2"]);
 
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
     }
 
@@ -1480,13 +1479,13 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Qg5"]);
 
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
     }
 
@@ -1496,13 +1495,13 @@ pub mod tests {
         let mut game = Game::new(board);
 
         // neither in check
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Qg6"]);
 
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
     }
 
@@ -1510,13 +1509,13 @@ pub mod tests {
     fn test_draw_no_legal_move_pawn() {
         let board = Board::from_fen("7k/8/6KP/8/8/8/8/8");
         let mut game = Game::new(board);
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["h7"]);
 
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
     }
 
@@ -1524,13 +1523,13 @@ pub mod tests {
     fn test_draw_no_legal_move_pinned() {
         let board = Board::from_fen("7k/5P1n/8/6N1/8/1R6/8/K6R");
         let mut game = Game::new(board);
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Ongoing, game.status);
         process_moves(&mut game, &["Ne6"]);
 
-        assert!(!game.is_in_check(true));
-        assert!(!game.is_in_check(false));
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
         assert_eq!(Status::Draw, game.status);
     }
 
