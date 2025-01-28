@@ -256,7 +256,7 @@ impl Game {
                     self.check,
                 )?,
                 Piece::Castling => {
-                    self.process_castling(parsed_move, is_white, pinned_pieces, self.check)?
+                    self.process_castling(parsed_move, is_white)?
                 }
             }
             // move successful, increment turn
@@ -265,9 +265,6 @@ impl Game {
             self.board.update_compute_moves();
             self.update_pinned_state();
             self.update_check_state();
-
-            // TODO
-            self.board.render();
 
             // final step is to update game status
             self.update_game_status();
@@ -395,8 +392,6 @@ impl Game {
         &mut self,
         mv: ParsedMove,
         is_white: bool,
-        pinned_pieces: u64,
-        check: bool,
     ) -> Result<(), MoveError> {
         // TODO do this
         // 1. which side am I castling on, SpecialMove is optional enum that can be CastlingKing or CastlingQueen
@@ -989,8 +984,6 @@ impl Game {
         let queens_moves = self.get_computed_pseudolegal_moves(&Piece::Queen, is_white);
         let pawns_moves = self.get_computed_pseudolegal_moves(&Piece::Pawn, is_white);
         let king_moves = self.get_computed_pseudolegal_moves(&Piece::King, is_white);
-
-        render_bitboard(&king_moves, 'k');
 
         let opponent_pieces = if is_white {
             self.board.black_pieces
