@@ -331,17 +331,8 @@ impl Game {
             check,
         )?;
         self.move_piece(from, to, is_white, mv.is_capture)?;
-
-        // TODO extract this to another function
-        // remove castling right
-        if is_white {
-            self.white_can_castle_kingside = false;
-            self.white_can_castle_queenside = false;
-        } else {
-            self.black_can_castle_kingside = false;
-            self.black_can_castle_queenside = false;
-        }
-
+        self.remove_castling_right(true, is_white);
+        self.remove_castling_right(false, is_white);
         Ok(())
     }
 
@@ -371,21 +362,29 @@ impl Game {
         self.move_piece(from, to, is_white, mv.is_capture)?;
 
         // remove castling right
-        if is_white {
-            if is_file(from, 'a') {
-                self.white_can_castle_queenside = false;
-            } else if is_file(from, 'h') {
-                self.white_can_castle_kingside = false;
-            }
-        } else {
-            if is_file(from, 'a') {
-                self.black_can_castle_queenside = false;
-            } else if is_file(from, 'h') {
-                self.black_can_castle_kingside = false;
-            }
+        if is_file(from, 'a') {
+            self.remove_castling_right(false, is_white);
+        } else if is_file(from, 'h') {
+            self.remove_castling_right(true, is_white);
         }
 
         Ok(())
+    }
+
+    fn remove_castling_right(&mut self, is_kingside: bool, is_white: bool) {
+        if is_white {
+            if is_kingside {
+                self.white_can_castle_kingside = false;
+            } else {
+                self.white_can_castle_queenside = false;
+            }
+        } else {
+            if is_kingside {
+                self.black_can_castle_kingside = false;
+            } else {
+                self.black_can_castle_queenside = false;
+            }
+        }
     }
 
     fn process_castling(
@@ -393,13 +392,6 @@ impl Game {
         mv: ParsedMove,
         is_white: bool,
     ) -> Result<(), MoveError> {
-        // TODO do this
-        // 1. which side am I castling on, SpecialMove is optional enum that can be CastlingKing or CastlingQueen
-        // 2. make sure I still have the right for castling
-        // 3. make sure no pieces on the path to castling
-        // 4. make sure no attack_moves on the path to castling
-        // 5. once castling done, disable all castling rights for that color
-
         // TODO refactor the code
         if let Some(special_move) = mv.special_move {
             let king = Self::get_pieces(&self.board, &Piece::King, is_white);
@@ -407,17 +399,21 @@ impl Game {
 
             let rank = if is_white { MASK_RANK_1 } else { MASK_RANK_8 };
 
-            if special_move == SpecialMove::CastlingKing {
-                self.validate_castling(true, is_white)?;
-                let rook = rooks & MASK_FILE_H;
-                self.move_piece(king, rank & MASK_FILE_G, is_white, false)?;
-                self.move_piece(rook, rank & MASK_FILE_F, is_white, false)?;
-            } else if special_move == SpecialMove::CastlingQueen {
-                self.validate_castling(false, is_white)?;
-                let rook = rooks & MASK_FILE_A;
-                self.move_piece(king, rank & MASK_FILE_C, is_white, false)?;
-                self.move_piece(rook, rank & MASK_FILE_D, is_white, false)?;
-            }
+            let (is_kingside, rook_mask, king_target, rook_target) = match special_move {
+                SpecialMove::CastlingKing => (true, MASK_FILE_H, MASK_FILE_G, MASK_FILE_F),
+                SpecialMove::CastlingQueen => (false, MASK_FILE_A, MASK_FILE_C, MASK_FILE_D),
+                _ => return Err(MoveError::InvalidMove(InvalidMoveReason::InvalidSourceOrTarget)),
+            };
+
+            self.validate_castling(is_kingside, is_white)?;
+
+            let rook = rooks & rook_mask;
+            self.move_piece(king, rank & king_target, is_white, false)?;
+            self.move_piece(rook, rank & rook_target, is_white, false)?;
+
+            // remove castling rights
+            self.remove_castling_right(true, is_white);
+            self.remove_castling_right(false, is_white);
             return Ok(());
         }
         Err(MoveError::InvalidMove(
@@ -517,63 +513,64 @@ impl Game {
             return Err(MoveError::Checked);
         }
 
-        // TODO refactor and tidy up
-        if is_white {
-            if is_kingside && !self.white_can_castle_kingside {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
-            } else if !is_kingside && !self.white_can_castle_queenside {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
-            } else if is_kingside
-                && (self.board.white_rooks & MASK_CASTLING_KINGSIDE_PIECE & MASK_RANK_1 == 0)
-            {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
-            } else if !is_kingside
-                && (self.board.white_rooks & MASK_CASTLING_QUEENSIDE_PIECE & MASK_RANK_1 == 0)
-            {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
-            }
+        // Define the structs to hold color-specific data
+        struct CastlingData {
+            can_castle_kingside: bool,
+            can_castle_queenside: bool,
+            rooks: u64,
+            rank_mask: u64,
+            attack_moves: u64,
+        }
 
-            let castling_path = if is_kingside {
-                MASK_CASTLING_PATH_KINGSIDE & MASK_RANK_1
-            } else {
-                MASK_CASTLING_PATH_QUEENSIDE & MASK_RANK_1
-            };
-            let castling_path_clear =
-                castling_path & self.board.free & !self.board.black_attack_moves == castling_path;
-            if !castling_path_clear {
-                return Err(MoveError::InvalidMove(
-                    InvalidMoveReason::CastlingPathBlocked,
-                ));
+        // Get the appropriate data based on color
+        let data = if is_white {
+            CastlingData {
+                can_castle_kingside: self.white_can_castle_kingside,
+                can_castle_queenside: self.white_can_castle_queenside,
+                rooks: self.board.white_rooks,
+                rank_mask: MASK_RANK_1,
+                attack_moves: self.board.black_attack_moves,
             }
         } else {
-            if is_kingside && !self.black_can_castle_kingside {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
-            } else if !is_kingside && !self.black_can_castle_queenside {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
-            } else if is_kingside
-                && (self.board.black_rooks & MASK_CASTLING_KINGSIDE_PIECE & MASK_RANK_8 == 0)
-            {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
-            } else if !is_kingside
-                && (self.board.black_rooks & MASK_CASTLING_QUEENSIDE_PIECE & MASK_RANK_8 == 0)
-            {
-                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
+            CastlingData {
+                can_castle_kingside: self.black_can_castle_kingside,
+                can_castle_queenside: self.black_can_castle_queenside,
+                rooks: self.board.black_rooks,
+                rank_mask: MASK_RANK_8,
+                attack_moves: self.board.white_attack_moves,
             }
+        };
 
-            let castling_path = if is_kingside {
-                MASK_CASTLING_PATH_KINGSIDE & MASK_RANK_8
-            } else {
-                MASK_CASTLING_PATH_QUEENSIDE & MASK_RANK_8
-            };
+        // Check castling rights
+        let can_castle = if is_kingside {
+            data.can_castle_kingside
+        } else {
+            data.can_castle_queenside
+        };
+        if !can_castle {
+            return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
+        }
 
-            let castling_path_clear =
-                (castling_path & self.board.free & !self.board.white_attack_moves) == castling_path;
+        // Check if rook is present
+        let rook_mask = if is_kingside {
+            MASK_CASTLING_KINGSIDE_PIECE
+        } else {
+            MASK_CASTLING_QUEENSIDE_PIECE
+        };
+        if data.rooks & rook_mask & data.rank_mask == 0 {
+            return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
+        }
 
-            if !castling_path_clear {
-                return Err(MoveError::InvalidMove(
-                    InvalidMoveReason::CastlingPathBlocked,
-                ));
-            }
+        // Check if castling path is clear
+        let path_mask = if is_kingside {
+            MASK_CASTLING_PATH_KINGSIDE
+        } else {
+            MASK_CASTLING_PATH_QUEENSIDE
+        } & data.rank_mask;
+
+        let path_clear = (path_mask & self.board.free & !data.attack_moves) == path_mask;
+        if !path_clear {
+            return Err(MoveError::InvalidMove(InvalidMoveReason::CastlingPathBlocked));
         }
         Ok(())
     }
@@ -1665,6 +1662,16 @@ pub mod tests {
                 .build(),
             game.board.black_rooks
         );
+        process_moves(&mut game, &["Rf2", "Rdf8"]);
+        // white already castled, can't do it again
+        process_moves_error(
+            &mut game,
+            &[(
+                "O-O-O",
+                MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight),
+            )],
+        );
+
 
         let board = Board::from_fen("r3k2r/8/8/8/8/8/8/R2QK2R");
         let mut game = Game::new(board);
