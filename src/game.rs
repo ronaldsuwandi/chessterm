@@ -1,4 +1,7 @@
-use crate::board::{is_file, is_rank, render_bitboard, Board};
+use crate::board::{
+    is_file, is_rank, render_bitboard, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_C, MASK_FILE_D,
+    MASK_FILE_F, MASK_FILE_G, MASK_FILE_H, MASK_RANK_1, MASK_RANK_8,
+};
 use crate::moves::{
     compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves,
     compute_queens_moves, compute_rooks_moves, resolve_bishop_source, resolve_king_source,
@@ -6,6 +9,13 @@ use crate::moves::{
     QUEEN_RAYS,
 };
 use crate::parser::{parse_move, ParsedMove, Piece, SpecialMove};
+
+const MASK_CASTLING_PATH_KINGSIDE: u64 = (MASK_FILE_F | MASK_FILE_G) & (MASK_RANK_1 | MASK_RANK_8);
+const MASK_CASTLING_PATH_QUEENSIDE: u64 =
+    (MASK_FILE_B | MASK_FILE_C | MASK_FILE_D) & (MASK_RANK_1 | MASK_RANK_8);
+
+const MASK_CASTLING_KINGSIDE_PIECE: u64 = MASK_FILE_H & (MASK_RANK_1 | MASK_RANK_8);
+const MASK_CASTLING_QUEENSIDE_PIECE: u64 = MASK_FILE_A & (MASK_RANK_1 | MASK_RANK_8);
 
 /// Game struct responsible for all game logics (pin, check, valid captures, etc)
 pub struct Game {
@@ -40,6 +50,8 @@ pub enum InvalidMoveReason {
     PawnNonDiagonalCapture,
     PawnInvalidPromotion,
     NoCastlingRight,
+    CastlingPathBlocked,
+    NoCastlingRook,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -259,7 +271,6 @@ impl Game {
 
             // final step is to update game status
             self.update_game_status();
-            println!("game status = {:?}", self.status);
             Ok(())
         } else {
             Err(MoveError::ParseError)
@@ -394,34 +405,29 @@ impl Game {
         // 4. make sure no attack_moves on the path to castling
         // 5. once castling done, disable all castling rights for that color
 
-        // let to = mv.to;
-        //
-        // let from = resolve_king_source(&self.board, &mv, self.is_white());
+        // TODO refactor the code
+        if let Some(special_move) = mv.special_move {
+            let king = Self::get_pieces(&self.board, &Piece::King, is_white);
+            let rooks = Self::get_pieces(&self.board, &Piece::Rook, is_white);
 
-        // self.validate_king_move(to, self.is_white())?;
-        // Self::validate_move_piece(
-        //     &self.board,
-        //     from,
-        //     to,
-        //     king,
-        //     is_white,
-        //     mv.is_capture,
-        //     pseudolegal_moves,
-        //     pinned_pieces,
-        //     check,
-        // )?;
-        // self.move_piece(from, to, is_white, mv.is_capture)?;
-        //
-        // // remove castling right
-        // if is_white {
-        //     self.white_can_castle_kingside = false;
-        //     self.white_can_castle_queenside = false;
-        // } else {
-        //     self.black_can_castle_kingside = false;
-        //     self.black_can_castle_queenside = false;
-        // }
+            let rank = if is_white { MASK_RANK_1 } else { MASK_RANK_8 };
 
-        Ok(())
+            if special_move == SpecialMove::CastlingKing {
+                self.validate_castling(true, is_white)?;
+                let rook = rooks & MASK_FILE_H;
+                self.move_piece(king, rank & MASK_FILE_G, is_white, false)?;
+                self.move_piece(rook, rank & MASK_FILE_F, is_white, false)?;
+            } else if special_move == SpecialMove::CastlingQueen {
+                self.validate_castling(false, is_white)?;
+                let rook = rooks & MASK_FILE_A;
+                self.move_piece(king, rank & MASK_FILE_C, is_white, false)?;
+                self.move_piece(rook, rank & MASK_FILE_D, is_white, false)?;
+            }
+            return Ok(());
+        }
+        Err(MoveError::InvalidMove(
+            InvalidMoveReason::InvalidSourceOrTarget,
+        ))
     }
 
     fn process_piece<F>(
@@ -509,6 +515,72 @@ impl Game {
         } else {
             Ok(())
         }
+    }
+
+    fn validate_castling(&self, is_kingside: bool, is_white: bool) -> Result<(), MoveError> {
+        if self.check {
+            return Err(MoveError::Checked);
+        }
+
+        // TODO refactor and tidy up
+        if is_white {
+            if is_kingside && !self.white_can_castle_kingside {
+                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
+            } else if !is_kingside && !self.white_can_castle_queenside {
+                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
+            } else if is_kingside
+                && (self.board.white_rooks & MASK_CASTLING_KINGSIDE_PIECE & MASK_RANK_1 == 0)
+            {
+                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
+            } else if !is_kingside
+                && (self.board.white_rooks & MASK_CASTLING_QUEENSIDE_PIECE & MASK_RANK_1 == 0)
+            {
+                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
+            }
+
+            let castling_path = if is_kingside {
+                MASK_CASTLING_PATH_KINGSIDE & MASK_RANK_1
+            } else {
+                MASK_CASTLING_PATH_QUEENSIDE & MASK_RANK_1
+            };
+            let castling_path_clear =
+                castling_path & self.board.free & !self.board.black_attack_moves == castling_path;
+            if !castling_path_clear {
+                return Err(MoveError::InvalidMove(
+                    InvalidMoveReason::CastlingPathBlocked,
+                ));
+            }
+        } else {
+            if is_kingside && !self.black_can_castle_kingside {
+                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
+            } else if !is_kingside && !self.black_can_castle_queenside {
+                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight));
+            } else if is_kingside
+                && (self.board.black_rooks & MASK_CASTLING_KINGSIDE_PIECE & MASK_RANK_8 == 0)
+            {
+                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
+            } else if !is_kingside
+                && (self.board.black_rooks & MASK_CASTLING_QUEENSIDE_PIECE & MASK_RANK_8 == 0)
+            {
+                return Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook));
+            }
+
+            let castling_path = if is_kingside {
+                MASK_CASTLING_PATH_KINGSIDE & MASK_RANK_8
+            } else {
+                MASK_CASTLING_PATH_QUEENSIDE & MASK_RANK_8
+            };
+
+            let castling_path_clear =
+                (castling_path & self.board.free & !self.board.white_attack_moves) == castling_path;
+
+            if !castling_path_clear {
+                return Err(MoveError::InvalidMove(
+                    InvalidMoveReason::CastlingPathBlocked,
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn validate_move_pinned_piece(
@@ -1533,130 +1605,125 @@ pub mod tests {
         assert_eq!(Status::Draw, game.status);
     }
 
-    // #[test]
-    // fn test_check_attackers() {
-    //     let black_knights: u64 = PositionBuilder::new().add_piece('f', 6).build();
-    //     let board = Board::new(
-    //         0,
-    //         0,
-    //         0,
-    //         0,
-    //         0,
-    //         bitboard_single('e', 4).unwrap(),
-    //         0,
-    //         black_knights,
-    //         0,
-    //         0,
-    //         0,
-    //         bitboard_single('d', 7).unwrap(),
-    //     );
-    //
-    //     let mut game = Game::new(board);
-    //     game.turn = 3; // white's turn
-    //     assert_eq!(
-    //         bitboard_single('f', 6).unwrap(),
-    //         game.check_attackers());
-    // }
+    #[test]
+    fn test_validate_castling() {
+        let basic_castlings = [
+            (true, true, true, true, Ok(())),
+            (true, true, false, true, Ok(())),
+            (true, true, true, false, Ok(())),
+            (true, true, false, false, Ok(())),
+            (
+                false,
+                true,
+                true,
+                true,
+                Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight)),
+            ),
+            (
+                true,
+                false,
+                false,
+                true,
+                Err(MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight)),
+            ),
+        ];
+        for (can_castle_kingside, can_castle_queenside, is_kingside, is_white, result) in
+            basic_castlings
+        {
+            let board = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R");
+            let mut game = Game::new(board);
+            if is_white {
+                game.white_can_castle_kingside = can_castle_kingside;
+                game.white_can_castle_queenside = can_castle_queenside;
+            } else {
+                game.black_can_castle_kingside = can_castle_kingside;
+                game.black_can_castle_queenside = can_castle_queenside;
+            }
+            assert_eq!(result, game.validate_castling(is_kingside, is_white));
+        }
+    }
 
-    // #[test]
-    // fn test_parse_castling() {
-    //     let white_rooks: u64 = PositionBuilder::new()
-    //         .add_piece('a', 1)
-    //         .add_piece('h', 1)
-    //         .build();
-    //     let white_king: u64 = PositionBuilder::new().add_piece('e', 1).build();
-    //     let black_rooks: u64 = PositionBuilder::new()
-    //         .add_piece('a', 8)
-    //         .add_piece('h', 8)
-    //         .build();
-    //     let black_king: u64 = PositionBuilder::new().add_piece('e', 8).build();
-    //     let board = Board::new(
-    //         0,
-    //         0,
-    //         white_rooks,
-    //         0,
-    //         0,
-    //         white_king,
-    //         0,
-    //         0,
-    //         black_rooks,
-    //         0,
-    //         0,
-    //         black_king,
-    //     );
-    //
-    //     assert_eq!(
-    //         ParsedMove {
-    //             piece: Piece::Castling,
-    //             from: 0,
-    //             to: 0,
-    //             is_capture: false,
-    //             is_white: true,
-    //             special_move: Some(SpecialMove::CastlingKing),
-    //         },
-    //         parse_move(&board, "O-O", true).unwrap()
-    //     );
-    //     assert_eq!(
-    //         ParsedMove {
-    //             piece: Piece::Castling,
-    //             from: 0,
-    //             to: 0,
-    //             is_capture: false,
-    //             is_white: false,
-    //             special_move: Some(SpecialMove::CastlingKing),
-    //         },
-    //         parse_move(&board, "O-O", false).unwrap()
-    //     );
-    //     assert_eq!(
-    //         ParsedMove {
-    //             piece: Piece::Castling,
-    //             from: 0,
-    //             to: 0,
-    //             is_capture: false,
-    //             is_white: true,
-    //             special_move: Some(SpecialMove::CastlingQueen),
-    //         },
-    //         parse_move(&board, "O-O-O", true).unwrap()
-    //     );
-    //     assert_eq!(
-    //         ParsedMove {
-    //             piece: Piece::Castling,
-    //             from: 0,
-    //             to: 0,
-    //             is_capture: false,
-    //             is_white: false,
-    //             special_move: Some(SpecialMove::CastlingQueen),
-    //         },
-    //         parse_move(&board, "O-O-O", false).unwrap()
-    //     );
-    //     assert_eq!(
-    //         Err(ParseError::InvalidCastling),
-    //         parse_move(&board, "O-", true)
-    //     );
-    //
-    //     let white_rooks: u64 = PositionBuilder::new()
-    //         .add_piece('a', 1)
-    //         .add_piece('h', 1)
-    //         .build();
-    //     let white_king: u64 = PositionBuilder::new().add_piece('g', 2).build();
-    //     let board = Board::new(
-    //         0,
-    //         0,
-    //         white_rooks,
-    //         0,
-    //         0,
-    //         white_king,
-    //         0,
-    //         0,
-    //         0,
-    //         0,
-    //         0,
-    //         0,
-    //     );
-    //
-    //     assert_eq!(
-    //         Err(ParseError::InvalidCastling),
-    //         parse_move(&board, "O-O", true)
-    //     );
-    // }
+    #[test]
+    fn test_castling() {
+        let board = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R");
+        let mut game = Game::new(board);
+        process_moves(&mut game, &["O-O"]);
+        assert_eq!(bitboard_single('g', 1).unwrap(), game.board.white_king);
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('a', 1)
+                .add_piece('f', 1)
+                .build(),
+            game.board.white_rooks
+        );
+        process_moves_error(
+            &mut game,
+            &[(
+                "O-O",
+                MoveError::InvalidMove(InvalidMoveReason::CastlingPathBlocked),
+            )],
+        );
+        process_moves(&mut game, &["O-O-O"]);
+        assert_eq!(bitboard_single('c', 8).unwrap(), game.board.black_king);
+        assert_eq!(
+            PositionBuilder::new()
+                .add_piece('d', 8)
+                .add_piece('h', 8)
+                .build(),
+            game.board.black_rooks
+        );
+
+        let board = Board::from_fen("r3k2r/8/8/8/8/8/8/R2QK2R");
+        let mut game = Game::new(board);
+        process_moves(&mut game, &["Qd8"]);
+        // black should be in check
+        assert!(Game::is_in_check(&game.board, false));
+        process_moves_error(
+            &mut game,
+            &[("O-O-O", MoveError::Checked), ("O-O", MoveError::Checked)],
+        );
+        process_moves(&mut game, &["Kxd8", "Kf1", "Ke8"]);
+        process_moves_error(
+            &mut game,
+            &[
+                (
+                    "O-O-O",
+                    MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight),
+                ),
+                (
+                    "O-O",
+                    MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight),
+                ),
+            ],
+        );
+
+        let board = Board::from_fen("r3k2r/8/8/8/8/8/8/R3K2R");
+        let mut game = Game::new(board);
+        process_moves(&mut game, &["Rab1", "Ra7", "Rba1"]);
+        // no check but rook on queen side has moved
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        process_moves_error(
+            &mut game,
+            &[(
+                "O-O-O",
+                MoveError::InvalidMove(InvalidMoveReason::NoCastlingRight),
+            )],
+        );
+        process_moves(&mut game, &["O-O"]);
+
+        let board = Board::from_fen("r3k2r/6B1/8/8/8/8/8/R3K2R");
+        let mut game = Game::new(board);
+        process_moves(&mut game, &["Bxh8"]);
+        // no check but rook on queen side has moved
+        assert!(!Game::is_in_check(&game.board, true));
+        assert!(!Game::is_in_check(&game.board, false));
+        process_moves_error(
+            &mut game,
+            &[(
+                "O-O",
+                MoveError::InvalidMove(InvalidMoveReason::NoCastlingRook),
+            )],
+        );
+    }
 }
