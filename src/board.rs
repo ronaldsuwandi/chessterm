@@ -1,3 +1,4 @@
+use crate::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves, compute_queens_moves, compute_rooks_moves};
 use crate::parser::Piece;
 
 #[derive(Debug, Clone, Copy)]
@@ -8,6 +9,7 @@ pub struct Board {
     pub white_bishops: u64,
     pub white_queens: u64,
     pub white_king: u64,
+
     pub black_pawns: u64,
     pub black_knights: u64,
     pub black_rooks: u64,
@@ -16,8 +18,25 @@ pub struct Board {
     pub black_king: u64,
     pub white_pieces: u64,
     pub black_pieces: u64,
+    
     pub occupied: u64,
     pub free: u64,
+
+    pub white_pawns_pseudolegal_moves: u64,
+    pub white_knights_pseudolegal_moves: u64,
+    pub white_rooks_pseudolegal_moves: u64,
+    pub white_bishops_pseudolegal_moves: u64,
+    pub white_queens_pseudolegal_moves: u64,
+    pub white_king_pseudolegal_moves: u64,
+    pub white_attack_moves: u64,
+
+    pub black_pawns_pseudolegal_moves: u64,
+    pub black_knights_pseudolegal_moves: u64,
+    pub black_rooks_pseudolegal_moves: u64,
+    pub black_bishops_pseudolegal_moves: u64,
+    pub black_queens_pseudolegal_moves: u64,
+    pub black_king_pseudolegal_moves: u64,
+    pub black_attack_moves: u64,
 }
 
 impl Board {
@@ -138,7 +157,7 @@ impl Board {
         let occupied = white_pieces | black_pieces;
         let free = !occupied;
 
-        Board {
+        let mut board = Board {
             white_pawns,
             white_knights,
             white_rooks,
@@ -157,7 +176,56 @@ impl Board {
             black_pieces,
             occupied,
             free,
-        }
+
+            white_pawns_pseudolegal_moves: 0,
+            white_knights_pseudolegal_moves: 0,
+            white_rooks_pseudolegal_moves: 0,
+            white_bishops_pseudolegal_moves: 0,
+            white_queens_pseudolegal_moves: 0,
+            white_king_pseudolegal_moves: 0,
+            black_pawns_pseudolegal_moves: 0,
+            black_knights_pseudolegal_moves: 0,
+            black_rooks_pseudolegal_moves: 0,
+            black_bishops_pseudolegal_moves: 0,
+            black_queens_pseudolegal_moves: 0,
+            black_king_pseudolegal_moves: 0,
+
+            white_attack_moves: 0,
+            black_attack_moves: 0,
+        };
+
+        board.update_compute_moves();
+        board
+    }
+
+    pub fn update_compute_moves(&mut self) {
+        self.white_pawns_pseudolegal_moves = compute_pawns_moves(&self, true);
+        self.white_knights_pseudolegal_moves = compute_knights_moves(&self, true);
+        self.white_rooks_pseudolegal_moves = compute_rooks_moves(&self, true);
+        self.white_bishops_pseudolegal_moves = compute_bishops_moves(&self, true);
+        self.white_queens_pseudolegal_moves = compute_queens_moves(&self, true);
+        self.white_king_pseudolegal_moves = compute_king_moves(&self, true);
+
+        self.black_pawns_pseudolegal_moves = compute_pawns_moves(&self, false);
+        self.black_knights_pseudolegal_moves = compute_knights_moves(&self, false);
+        self.black_rooks_pseudolegal_moves = compute_rooks_moves(&self, false);
+        self.black_bishops_pseudolegal_moves = compute_bishops_moves(&self, false);
+        self.black_queens_pseudolegal_moves = compute_queens_moves(&self, false);
+        self.black_king_pseudolegal_moves = compute_king_moves(&self, false);
+
+        self.white_attack_moves = self.white_pawns_pseudolegal_moves
+            | self.white_knights_pseudolegal_moves
+            | self.white_rooks_pseudolegal_moves
+            | self.white_bishops_pseudolegal_moves
+            | self.white_queens_pseudolegal_moves
+            | self.white_king_pseudolegal_moves;
+        self.black_attack_moves = self.black_pawns_pseudolegal_moves
+            | self.black_knights_pseudolegal_moves
+            | self.black_rooks_pseudolegal_moves
+            | self.black_bishops_pseudolegal_moves
+            | self.black_queens_pseudolegal_moves
+            | self.black_king_pseudolegal_moves;
+
     }
 
     /// check if the target position on the board is a capture move or not
@@ -332,6 +400,46 @@ impl Board {
         }
         println!("  +------------------------+");
         println!("    a  b  c  d  e  f  g  h");
+    }
+    
+    /// Helper function to return the piece type based on position
+    /// returns optional piece type and boolean flag to indicate if it's white or black
+    pub fn get_piece_type_at(&self, position: u64) -> Option<(Piece, bool)> {
+        if self.white_pieces & position != 0 {
+            if self.white_pawns & position != 0 {
+                Some((Piece::Pawn, true))
+            } else if self.white_bishops & position != 0 {
+                Some((Piece::Bishop, true))
+            } else if self.white_rooks & position != 0 {
+                Some((Piece::Rook, true))
+            } else if self.white_knights & position != 0 {
+                Some((Piece::Knight, true))
+            } else if self.white_queens & position != 0 {
+                Some((Piece::Queen, true))
+            } else if self.white_king & position != 0 {
+                Some((Piece::King, true))
+            } else {
+                None
+            }
+        } else if self.black_pieces & position != 0 {
+            if self.black_pawns & position != 0 {
+                Some((Piece::Pawn, false))
+            } else if self.black_bishops & position != 0 {
+                Some((Piece::Bishop, false))
+            } else if self.black_rooks & position != 0 {
+                Some((Piece::Rook, false))
+            } else if self.black_knights & position != 0 {
+                Some((Piece::Knight, false))
+            } else if self.black_queens & position != 0 {
+                Some((Piece::Queen, false))
+            } else if self.black_king & position != 0 {
+                Some((Piece::King, false))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
 
@@ -759,5 +867,33 @@ pub mod tests {
             PositionBuilder::new().add_piece('d', 8).build(),
             board.white_knights
         );
+    }
+
+    #[test]
+    fn test_get_piece_type_at() {
+        let board = Board::from_fen("4k1bn/6nn/R6K/2q5/3P2N1/6Q1/3P4/7B");
+        let expected = [
+            ('a', 6, Some((Piece::Rook, true))),
+            ('a', 1, None),
+            ('c', 5, Some((Piece::Queen, false))),
+            ('d', 4, Some((Piece::Pawn, true))),
+            ('d', 2, Some((Piece::Pawn, true))),
+            ('e', 8, Some((Piece::King, false))),
+            ('e', 7, None),
+            ('f', 5, None),
+            ('g', 8, Some((Piece::Bishop, false))),
+            ('g', 7, Some((Piece::Knight, false))),
+            ('g', 4, Some((Piece::Knight, true))),
+            ('g', 3, Some((Piece::Queen, true))),
+            ('g', 1, None),
+            ('h', 8, Some((Piece::Knight, false))),
+            ('h', 7, Some((Piece::Knight, false))),
+            ('h', 6, Some((Piece::King, true))),
+            ('h', 1, Some((Piece::Bishop, true))),
+        ];
+        for (file, rank, piece) in expected {
+            let pos = bitboard_single(file, rank).unwrap();
+            assert_eq!(piece, board.get_piece_type_at(pos));
+        }
     }
 }

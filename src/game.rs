@@ -18,23 +18,6 @@ pub struct Game {
     pub black_can_castle_kingside: bool,
     pub black_can_castle_queenside: bool,
 
-    // computed moves
-    pub white_pawns_pseudolegal_moves: u64,
-    pub white_knights_pseudolegal_moves: u64,
-    pub white_rooks_pseudolegal_moves: u64,
-    pub white_bishops_pseudolegal_moves: u64,
-    pub white_queens_pseudolegal_moves: u64,
-    pub white_king_pseudolegal_moves: u64,
-    pub black_pawns_pseudolegal_moves: u64,
-    pub black_knights_pseudolegal_moves: u64,
-    pub black_rooks_pseudolegal_moves: u64,
-    pub black_bishops_pseudolegal_moves: u64,
-    pub black_queens_pseudolegal_moves: u64,
-    pub black_king_pseudolegal_moves: u64,
-
-    pub white_attack_moves: u64,
-    pub black_attack_moves: u64,
-
     // check
     pub check: bool,
 
@@ -56,6 +39,7 @@ pub enum InvalidMoveReason {
     KingCaptureMove,
     PawnNonDiagonalCapture,
     PawnInvalidPromotion,
+    NoCastlingRight,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -76,7 +60,7 @@ pub enum Status {
 
 impl Game {
     pub fn new(board: Board) -> Game {
-        let mut game = Game {
+        Game {
             board,
             turn: 1,
 
@@ -85,32 +69,12 @@ impl Game {
             black_can_castle_kingside: true,
             black_can_castle_queenside: true,
 
-            white_pawns_pseudolegal_moves: 0,
-            white_knights_pseudolegal_moves: 0,
-            white_rooks_pseudolegal_moves: 0,
-            white_bishops_pseudolegal_moves: 0,
-            white_queens_pseudolegal_moves: 0,
-            white_king_pseudolegal_moves: 0,
-            black_pawns_pseudolegal_moves: 0,
-            black_knights_pseudolegal_moves: 0,
-            black_rooks_pseudolegal_moves: 0,
-            black_bishops_pseudolegal_moves: 0,
-            black_queens_pseudolegal_moves: 0,
-            black_king_pseudolegal_moves: 0,
-
-            white_attack_moves: 0,
-            black_attack_moves: 0,
-
             check: false,
             pinned_white: 0,
             pinned_black: 0,
 
             status: Status::Ongoing,
-        };
-
-        // initialise precomputed moves
-        game.update_computed_moves();
-        game
+        }
     }
 
     fn is_white(&self) -> bool {
@@ -163,41 +127,12 @@ impl Game {
             }
         }
     }
-
-    fn update_computed_moves(&mut self) {
-        self.white_pawns_pseudolegal_moves = compute_pawns_moves(&self.board, true);
-        self.white_knights_pseudolegal_moves = compute_knights_moves(&self.board, true);
-        self.white_rooks_pseudolegal_moves = compute_rooks_moves(&self.board, true);
-        self.white_bishops_pseudolegal_moves = compute_bishops_moves(&self.board, true);
-        self.white_queens_pseudolegal_moves = compute_queens_moves(&self.board, true);
-        self.white_king_pseudolegal_moves = compute_king_moves(&self.board, true);
-
-        self.black_pawns_pseudolegal_moves = compute_pawns_moves(&self.board, false);
-        self.black_knights_pseudolegal_moves = compute_knights_moves(&self.board, false);
-        self.black_rooks_pseudolegal_moves = compute_rooks_moves(&self.board, false);
-        self.black_bishops_pseudolegal_moves = compute_bishops_moves(&self.board, false);
-        self.black_queens_pseudolegal_moves = compute_queens_moves(&self.board, false);
-        self.black_king_pseudolegal_moves = compute_king_moves(&self.board, false);
-
-        self.white_attack_moves = self.white_pawns_pseudolegal_moves
-            | self.white_knights_pseudolegal_moves
-            | self.white_rooks_pseudolegal_moves
-            | self.white_bishops_pseudolegal_moves
-            | self.white_queens_pseudolegal_moves
-            | self.white_king_pseudolegal_moves;
-        self.black_attack_moves = self.black_pawns_pseudolegal_moves
-            | self.black_knights_pseudolegal_moves
-            | self.black_rooks_pseudolegal_moves
-            | self.black_bishops_pseudolegal_moves
-            | self.black_queens_pseudolegal_moves
-            | self.black_king_pseudolegal_moves;
-    }
-
+    
     fn get_attack_moves(&self, is_white: bool) -> u64{
         if is_white {
-            self.black_attack_moves
+            self.board.black_attack_moves
         } else {
-            self.white_attack_moves
+            self.board.white_attack_moves
         }
     }
 
@@ -205,44 +140,44 @@ impl Game {
         match piece_type {
             Piece::Pawn => {
                 if is_white {
-                    self.white_pawns_pseudolegal_moves
+                    self.board.white_pawns_pseudolegal_moves
                 } else {
-                    self.black_pawns_pseudolegal_moves
+                    self.board.black_pawns_pseudolegal_moves
                 }
             }
             Piece::Knight => {
                 if is_white {
-                    self.white_knights_pseudolegal_moves
+                    self.board.white_knights_pseudolegal_moves
                 } else {
-                    self.black_knights_pseudolegal_moves
+                    self.board.black_knights_pseudolegal_moves
                 }
             }
             Piece::Rook => {
                 if is_white {
-                    self.white_rooks_pseudolegal_moves
+                    self.board.white_rooks_pseudolegal_moves
                 } else {
-                    self.black_rooks_pseudolegal_moves
+                    self.board.black_rooks_pseudolegal_moves
                 }
             }
             Piece::Bishop => {
                 if is_white {
-                    self.white_bishops_pseudolegal_moves
+                    self.board.white_bishops_pseudolegal_moves
                 } else {
-                    self.black_bishops_pseudolegal_moves
+                    self.board.black_bishops_pseudolegal_moves
                 }
             }
             Piece::Queen => {
                 if is_white {
-                    self.white_queens_pseudolegal_moves
+                    self.board.white_queens_pseudolegal_moves
                 } else {
-                    self.black_queens_pseudolegal_moves
+                    self.board.black_queens_pseudolegal_moves
                 }
             }
             Piece::King | Piece::Castling => {
                 if is_white {
-                    self.white_king_pseudolegal_moves
+                    self.board.white_king_pseudolegal_moves
                 } else {
-                    self.black_king_pseudolegal_moves
+                    self.board.black_king_pseudolegal_moves
                 }
             }
         }
@@ -300,11 +235,10 @@ impl Game {
                     pinned_pieces,
                     self.check,
                 )?,
-                Piece::Rook => self.process_piece(
+                Piece::Rook => self.process_rook(
                     parsed_move,
                     pieces,
                     is_white,
-                    resolve_rook_source,
                     pseudolegal_moves,
                     pinned_pieces,
                     self.check,
@@ -317,15 +251,17 @@ impl Game {
                     pinned_pieces,
                     self.check,
                 )?,
-                Piece::Castling => {
-                    // self.process_piece(parsed_move, resolve_queen_source, Self::move_queen)
-                    // Ok(())
-                }
+                Piece::Castling => self.process_castling(
+                    parsed_move,
+                    is_white,
+                    pinned_pieces,
+                    self.check,
+                )?
             }
             // move successful, increment turn
             self.turn += 1;
-
-            self.update_computed_moves();
+            
+            self.board.update_compute_moves();
             self.update_pinned_state();
             self.update_check_state();
 
@@ -397,6 +333,104 @@ impl Game {
             check,
         )?;
         self.move_piece(from, to, is_white, mv.is_capture)?;
+
+        // TODO extract this to another function
+        // remove castling right
+        if is_white {
+            self.white_can_castle_kingside = false;
+            self.white_can_castle_queenside = false;
+        } else {
+            self.black_can_castle_kingside = false;
+            self.black_can_castle_queenside = false;
+        }
+
+        Ok(())
+    }
+
+    fn process_rook(
+        &mut self,
+        mv: ParsedMove,
+        rook: u64,
+        is_white: bool,
+        pseudolegal_moves: u64,
+        pinned_pieces: u64,
+        check: bool,
+    ) -> Result<(), MoveError> {
+        let to = mv.to;
+        let from = resolve_rook_source(&self.board, &mv, self.is_white());
+
+        Self::validate_move_piece(
+            &self.board,
+            from,
+            to,
+            rook,
+            is_white,
+            mv.is_capture,
+            pseudolegal_moves,
+            pinned_pieces,
+            check,
+        )?;
+        self.move_piece(from, to, is_white, mv.is_capture)?;
+
+        // remove castling right
+        if is_white {
+            if is_file(from, 'a') {
+                self.white_can_castle_queenside = false;
+            } else if is_file(from, 'h') {
+                self.white_can_castle_kingside = false;
+            }
+        } else {
+            if is_file(from, 'a') {
+                self.black_can_castle_queenside = false;
+            } else if is_file(from, 'h') {
+                self.black_can_castle_kingside = false;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn process_castling(
+        &mut self,
+        mv: ParsedMove,
+        is_white: bool,
+        pinned_pieces: u64,
+        check: bool,
+    ) -> Result<(), MoveError> {
+
+        // TODO do this
+        // 1. which side am I castling on, SpecialMove is optional enum that can be CastlingKing or CastlingQueen
+        // 2. make sure I still have the right for castling
+        // 3. make sure no pieces on the path to castling
+        // 4. make sure no attack_moves on the path to castling
+        // 5. once castling done, disable all castling rights for that color
+
+        // let to = mv.to;
+        //
+        // let from = resolve_king_source(&self.board, &mv, self.is_white());
+
+        // self.validate_king_move(to, self.is_white())?;
+        // Self::validate_move_piece(
+        //     &self.board,
+        //     from,
+        //     to,
+        //     king,
+        //     is_white,
+        //     mv.is_capture,
+        //     pseudolegal_moves,
+        //     pinned_pieces,
+        //     check,
+        // )?;
+        // self.move_piece(from, to, is_white, mv.is_capture)?;
+        //
+        // // remove castling right
+        // if is_white {
+        //     self.white_can_castle_kingside = false;
+        //     self.white_can_castle_queenside = false;
+        // } else {
+        //     self.black_can_castle_kingside = false;
+        //     self.black_can_castle_queenside = false;
+        // }
 
         Ok(())
     }
@@ -633,90 +667,6 @@ impl Game {
         }
         Ok(())
     }
-
-    fn move_bishop(
-        &mut self,
-        from: u64,
-        to: u64,
-        parsed_move: ParsedMove,
-    ) -> Result<(), MoveError> {
-        let is_white = self.is_white();
-        let bishops = if is_white {
-            self.board.white_bishops
-        } else {
-            self.board.black_bishops
-        };
-
-        self.move_piece(from, to, is_white, parsed_move.is_capture)
-    }
-
-    fn move_king(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> Result<(), MoveError> {
-        let is_white = self.is_white();
-        let king = if is_white {
-            self.board.white_king
-        } else {
-            self.board.black_king
-        };
-
-        self.move_piece(from, to, is_white, parsed_move.is_capture)?;
-
-        // TODO castling state update
-        Ok(())
-    }
-
-    fn move_rook(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> Result<(), MoveError> {
-        let is_white = self.is_white();
-        let rooks = if is_white {
-            self.board.white_rooks
-        } else {
-            self.board.black_rooks
-        };
-
-        self.move_piece(from, to, is_white, parsed_move.is_capture)?;
-
-        // TODO castling state update
-        // let
-
-        if is_white && (self.white_can_castle_kingside || self.white_can_castle_queenside) {
-            // disable castling if needed
-            if is_file(from, 'a') {
-            } else if is_file(from, 'h') {
-            }
-        } else if !is_white && (self.black_can_castle_kingside || self.black_can_castle_queenside) {
-        }
-
-        Ok(())
-    }
-
-    fn move_queen(&mut self, from: u64, to: u64, parsed_move: ParsedMove) -> Result<(), MoveError> {
-        let is_white = self.is_white();
-        let queens = if is_white {
-            self.board.white_queens
-        } else {
-            self.board.black_queens
-        };
-
-        self.move_piece(from, to, is_white, parsed_move.is_capture)
-    }
-
-    fn move_knight(
-        &mut self,
-        from: u64,
-        to: u64,
-        parsed_move: ParsedMove,
-    ) -> Result<(), MoveError> {
-        let is_white = self.is_white();
-        let knights = if is_white {
-            self.board.white_knights
-        } else {
-            self.board.black_knights
-        };
-
-        self.move_piece(from, to, is_white, parsed_move.is_capture)
-    }
-
-    // TODO implement parse move and game logic for check
-    // fn parse_move(&self, cmd: &str)
 
     // pin handling
     fn update_pinned_state(&mut self) {
