@@ -1,4 +1,4 @@
-use crate::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves, compute_queens_moves, compute_rooks_moves};
+use crate::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_diagonal_captures, compute_pawns_moves, compute_queens_moves, compute_rooks_moves};
 use crate::parser::Piece;
 
 #[derive(Debug, Clone, Copy)]
@@ -28,7 +28,6 @@ pub struct Board {
     pub white_bishops_pseudolegal_moves: u64,
     pub white_queens_pseudolegal_moves: u64,
     pub white_king_pseudolegal_moves: u64,
-    pub white_attack_moves: u64,
 
     pub black_pawns_pseudolegal_moves: u64,
     pub black_knights_pseudolegal_moves: u64,
@@ -36,6 +35,10 @@ pub struct Board {
     pub black_bishops_pseudolegal_moves: u64,
     pub black_queens_pseudolegal_moves: u64,
     pub black_king_pseudolegal_moves: u64,
+
+    pub white_pawns_attack_moves: u64, // pawn can only attack diagonally
+    pub black_pawns_attack_moves: u64, // pawn can only attack diagonally
+    pub white_attack_moves: u64,
     pub black_attack_moves: u64,
 }
 
@@ -190,6 +193,8 @@ impl Board {
             black_queens_pseudolegal_moves: 0,
             black_king_pseudolegal_moves: 0,
 
+            white_pawns_attack_moves: 0,
+            black_pawns_attack_moves: 0,
             white_attack_moves: 0,
             black_attack_moves: 0,
         };
@@ -213,17 +218,21 @@ impl Board {
         self.black_queens_pseudolegal_moves = compute_queens_moves(&self, false);
         self.black_king_pseudolegal_moves = compute_king_moves(&self, false);
 
+        self.white_pawns_attack_moves = compute_pawns_diagonal_captures(&self, true);
+        self.black_pawns_attack_moves = compute_pawns_diagonal_captures(&self, false);
+
         self.update_attack_moves();
     }
 
     pub fn update_attack_moves(&mut self) {
-        self.white_attack_moves = self.white_pawns_pseudolegal_moves
+        // for attack moves, we do not use pawns pseudolegal moves
+        self.white_attack_moves = self.white_pawns_attack_moves
             | self.white_knights_pseudolegal_moves
             | self.white_rooks_pseudolegal_moves
             | self.white_bishops_pseudolegal_moves
             | self.white_queens_pseudolegal_moves
             | self.white_king_pseudolegal_moves;
-        self.black_attack_moves = self.black_pawns_pseudolegal_moves
+        self.black_attack_moves = self.black_pawns_attack_moves
             | self.black_knights_pseudolegal_moves
             | self.black_rooks_pseudolegal_moves
             | self.black_bishops_pseudolegal_moves

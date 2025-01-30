@@ -19,4 +19,14 @@ macro_rules! precompute_moves {
         }
         rays
     }};
+
+    ($size: expr, $is_white: expr, $func: ident) => {{
+        let mut rays = [[0u64; $size]; 64];
+        let mut i = 0;
+        while i < 64 {
+            rays[i] = $func(i as u8, $is_white);
+            i += 1;
+        }
+        rays
+    }};
 }
