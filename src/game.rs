@@ -571,38 +571,6 @@ impl Game {
         ))
     }
 
-    fn process_piece<F>(
-        &mut self,
-        mv: ParsedMove,
-        pieces: u64,
-        is_white: bool,
-        source_resolver_fn: F,
-        pseudolegal_moves: u64,
-        pinned_pieces: u64,
-        check: bool,
-    ) -> Result<(), MoveError>
-    where
-        F: Fn(&Board, &ParsedMove, bool) -> u64,
-    {
-        let to = mv.to;
-        let from = source_resolver_fn(&self.board, &mv, self.is_white());
-
-        Self::validate_move_piece(
-            &self.board,
-            mv.piece,
-            from,
-            to,
-            pieces,
-            is_white,
-            mv.is_capture,
-            pseudolegal_moves,
-            pinned_pieces,
-            check,
-            0,
-        )?;
-        self.move_piece(from, to, is_white, mv.is_capture)
-    }
-
     // pawn specific move validation (diagonal capture, promotion, etc)
     fn validate_pawn_move(
         &self,

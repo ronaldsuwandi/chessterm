@@ -1,4 +1,4 @@
-use crate::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_diagonal_captures, compute_pawns_moves, compute_queens_moves, compute_rooks_moves};
+use crate::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves, compute_queens_moves, compute_rooks_moves, WHITE_PAWN_MOVES};
 use crate::parser::Piece;
 
 #[derive(Debug, Clone, Copy)]
@@ -204,22 +204,19 @@ impl Board {
     }
 
     pub fn update_compute_moves(&mut self) {
-        self.white_pawns_pseudolegal_moves = compute_pawns_moves(&self, true);
+        (self.white_pawns_pseudolegal_moves, self.white_pawns_attack_moves) = compute_pawns_moves(&self, true);
         self.white_knights_pseudolegal_moves = compute_knights_moves(&self, true);
         self.white_rooks_pseudolegal_moves = compute_rooks_moves(&self, true);
         self.white_bishops_pseudolegal_moves = compute_bishops_moves(&self, true);
         self.white_queens_pseudolegal_moves = compute_queens_moves(&self, true);
         self.white_king_pseudolegal_moves = compute_king_moves(&self, true);
 
-        self.black_pawns_pseudolegal_moves = compute_pawns_moves(&self, false);
+        (self.black_pawns_pseudolegal_moves, self.black_pawns_attack_moves) = compute_pawns_moves(&self, false);
         self.black_knights_pseudolegal_moves = compute_knights_moves(&self, false);
         self.black_rooks_pseudolegal_moves = compute_rooks_moves(&self, false);
         self.black_bishops_pseudolegal_moves = compute_bishops_moves(&self, false);
         self.black_queens_pseudolegal_moves = compute_queens_moves(&self, false);
         self.black_king_pseudolegal_moves = compute_king_moves(&self, false);
-
-        self.white_pawns_attack_moves = compute_pawns_diagonal_captures(&self, true);
-        self.black_pawns_attack_moves = compute_pawns_diagonal_captures(&self, false);
 
         self.update_attack_moves();
     }
@@ -703,7 +700,7 @@ pub mod tests {
 
     #[test]
     fn test_is_capture() {
-        let board = Board::from_fen("8/7p/6P1/8/8/pp2P1p1/P4P2/8");
+        let board = Board::from_fen("4k3/7p/6P1/8/8/pp2P1p1/P4P2/4K3");
 
         assert!(board.is_capture(bitboard_single('b', 3).unwrap(), true));
         assert!(board.is_capture(bitboard_single('g', 3).unwrap(), true));
@@ -724,7 +721,7 @@ pub mod tests {
             .build();
         let black_pawns = PositionBuilder::new().add_piece('f', 7).build();
 
-        let mut board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
+        let mut board = Board::new(white_pawns, 0, 0, 0, 0, bitboard_single('e', 1).unwrap(), black_pawns, 0, 0, 0, 0, bitboard_single('e', 8).unwrap());
         board.move_piece(
             bitboard_single('e', 2).unwrap(),
             bitboard_single('e', 4).unwrap(),
@@ -767,7 +764,7 @@ pub mod tests {
             .build();
         let black_pawns = PositionBuilder::new().add_piece('f', 7).build();
 
-        let mut board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
+        let mut board = Board::new(white_pawns, 0, 0, 0, 0, bitboard_single('e', 1).unwrap(), black_pawns, 0, 0, 0, 0, bitboard_single('e', 8).unwrap());
 
         assert_eq!(white_pawns, board.white_pawns);
         assert_eq!(black_pawns, board.black_pawns);
@@ -803,7 +800,8 @@ pub mod tests {
             .add_piece('g', 7)
             .build();
 
-        let mut board = Board::new(white_pawns, 0, 0, 0, 0, 0, black_pawns, 0, 0, 0, 0, 0);
+        let mut board = Board::new(white_pawns, 0, 0, 0, 0, bitboard_single('e', 1).unwrap(),
+                                   black_pawns, 0, 0, 0, 0, bitboard_single('e', 8).unwrap());
 
         let actual_white_piece = *board
             .get_piece_at(bitboard_single('e', 2).unwrap(), true)
@@ -836,7 +834,7 @@ pub mod tests {
             .build();
         let white_queen = PositionBuilder::new().add_piece('a', 1).build();
 
-        let mut board = Board::new(white_pawns, 0, 0, 0, white_queen, 0, 0, 0, 0, 0, 0, 0);
+        let mut board = Board::new(white_pawns, 0, 0, 0, white_queen, bitboard_single('e', 1).unwrap(), 0, 0, 0, 0, 0, bitboard_single('e', 8).unwrap());
         assert_eq!(
             PositionBuilder::new().add_piece('a', 1).build(),
             board.white_queens

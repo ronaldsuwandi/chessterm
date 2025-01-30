@@ -1,6 +1,6 @@
 use crate::board::{
-    bitboard_single, is_file, is_rank, Board, MASK_FILE_A, MASK_FILE_B,
-    MASK_FILE_G, MASK_FILE_H, MASK_RANK_2, MASK_RANK_7,
+    bitboard_single, is_file, is_rank, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H,
+    MASK_RANK_2, MASK_RANK_7,
 };
 use crate::parser::ParsedMove;
 use crate::precompute_moves;
@@ -55,10 +55,10 @@ const fn precompute_pawn_moves(index: u8, is_white: bool) -> [u64; 2] {
     [moves, attacks]
 }
 
-
 // PAWNS
-pub fn compute_pawns_moves(board: &Board, is_white: bool) -> u64 {
+pub fn compute_pawns_moves(board: &Board, is_white: bool) -> (u64, u64) {
     let mut moves = 0u64;
+    let mut attack_moves = 0u64;
     let own_pieces: u64;
     let mut pawns: u64;
     let precomputed_moves: [[u64; 2]; 64];
@@ -78,7 +78,7 @@ pub fn compute_pawns_moves(board: &Board, is_white: bool) -> u64 {
 
         // add pawn's precomputed moves and exclude own piece
         moves |= precomputed_moves[index][0] & !own_pieces;
-
+        attack_moves |= precomputed_moves[index][1] & !own_pieces;
 
         // additional check for double move only for rank 2 for white
         if is_white && index >= 8 && index <= 15 {
@@ -101,7 +101,6 @@ pub fn compute_pawns_moves(board: &Board, is_white: bool) -> u64 {
                 // if rank 6 is blocked, remove both rank 6 and 5
                 moves &= !(1u64 << (index - 16));
                 moves &= !(1u64 << (index - 8));
-
             } else if rank5_free == 0 {
                 // If rank 5 is blocked, remove only the rank 5 move from precomputed moves
                 moves &= !(1u64 << (index - 16));
@@ -112,75 +111,7 @@ pub fn compute_pawns_moves(board: &Board, is_white: bool) -> u64 {
         pawns &= pawns - 1;
     }
 
-    moves
-}
-pub fn oldcompute_pawns_moves(board: &Board, is_white: bool) -> u64 {
-    let moves: u64;
-
-    let single_moves = compute_pawns_single_moves(&board, is_white);
-    let capture_diagonals = compute_pawns_diagonal_captures(&board, is_white);
-    let double_moves = compute_pawns_double_moves(&board, is_white);
-
-    let own_pieces = if is_white {
-        board.white_pieces
-    } else {
-        board.black_pieces
-    };
-
-    // exclude own pieces
-    moves = single_moves | double_moves | capture_diagonals & !own_pieces;
-    moves
-}
-
-fn compute_pawns_single_moves(board: &Board, is_white: bool) -> u64 {
-    let moves: u64;
-
-    if is_white {
-        moves = board.white_pawns << 8 & board.free;
-    } else {
-        moves = board.black_pawns >> 8 & board.free;
-    }
-    moves
-}
-
-fn compute_pawns_double_moves(board: &Board, is_white: bool) -> u64 {
-    let mut moves: u64;
-
-    // upward move
-    if is_white {
-        // only rank 2 can move twice
-        // moves 1 step first and filter for blockage on rank 3
-        moves = ((board.white_pawns & MASK_RANK_2) << 8) & board.free;
-        moves = (moves << 8) & board.free; // move another step + only eligible spot
-    } else {
-        // only rank 7 can move twice
-        // moves 1 step first and filter for blockage on rank 6
-        moves = ((board.black_pawns & MASK_RANK_7) >> 8) & board.free;
-        moves = (moves >> 8) & board.free; // move another step
-    }
-
-    moves
-}
-
-pub fn compute_pawns_diagonal_captures(board: &Board, is_white: bool) -> u64 {
-    let mut moves: u64;
-    let left_diagonal: u64;
-    let right_diagonal: u64;
-
-    if is_white {
-        moves = board.white_pawns;
-        left_diagonal = moves << 7 & !MASK_FILE_H; // prevent wrap-around on H file for left diagonal move
-        right_diagonal = moves << 9 & !MASK_FILE_A; // prevent wrap-around on A file on right diagonal move
-    } else {
-        moves = board.black_pawns;
-        left_diagonal = moves >> 9 & !MASK_FILE_H; // prevent wrap-around on H file for left diagonal move
-        right_diagonal = moves >> 7 & !MASK_FILE_A; // prevent wrap-around on A file on right diagonal move
-    }
-
-    // TODO add diagonal capture for en passant
-
-    moves = left_diagonal | right_diagonal;
-    moves
+    (moves, attack_moves)
 }
 
 pub const KNIGHT_MOVES: [u64; 64] = precompute_moves!(precompute_knight_moves);
@@ -254,7 +185,9 @@ pub fn find_blocker_mask(ray: u64, occupied: u64, direction: usize) -> (u64, u64
 
 pub const ROOK_RAYS_DIRECTIONS: [usize; 4] = [UP, RIGHT, DOWN, LEFT];
 pub const BISHOP_RAYS_DIRECTIONS: [usize; 4] = [UP_RIGHT, DOWN_RIGHT, DOWN_LEFT, UP_LEFT];
-pub const QUEEN_RAYS_DIRECTIONS: [usize; 8] = [UP, UP_RIGHT, RIGHT, DOWN_RIGHT, DOWN, DOWN_LEFT, LEFT, UP_LEFT];
+pub const QUEEN_RAYS_DIRECTIONS: [usize; 8] = [
+    UP, UP_RIGHT, RIGHT, DOWN_RIGHT, DOWN, DOWN_LEFT, LEFT, UP_LEFT,
+];
 
 pub const ROOK_RAYS: [[u64; 4]; 64] = precompute_moves!(4, precompute_rook_rays);
 pub const BISHOP_RAYS: [[u64; 4]; 64] = precompute_moves!(4, precompute_bishop_rays);
@@ -301,7 +234,12 @@ const fn precompute_rook_rays(index: u8) -> [u64; 4] {
     [top, right, bottom, left]
 }
 
-fn compute_sliding_moves(mut pieces: u64, directions: &[usize], own_pieces: u64, occupied: u64) -> u64 {
+fn compute_sliding_moves(
+    mut pieces: u64,
+    directions: &[usize],
+    own_pieces: u64,
+    occupied: u64,
+) -> u64 {
     let mut moves = 0u64;
 
     while pieces != 0 {
@@ -558,17 +496,13 @@ impl Rays for [[u64; 8]; 64] {
     }
 }
 
-// FIXME resolve_sliding_piece_source MUST find the piece that is not blocked
-// FIXME if sliding piece is blocked, return with unresolved
-
 // helper function to get piece source using rays, no validation done here
 fn resolve_sliding_piece_source(
     board: &Board,
     mut pieces: u64,
     parsed_move: &ParsedMove,
     directions: &[usize],
-) -> u64
-{
+) -> u64 {
     let mut source = 0;
     while pieces > 0 {
         // get current piece position using LSB in bitboard
@@ -652,161 +586,6 @@ pub mod tests {
     use crate::parser::parse_move;
 
     #[test]
-    fn test_diagonal_captures_pawn() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('e', 3)
-            .add_piece('a', 2)
-            .add_piece('h', 2)
-            .build();
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 7)
-            .add_piece('d', 4)
-            .add_piece('g', 3)
-            .build();
-
-        let board = Board::new(
-            white_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 1).unwrap(),
-            black_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 8).unwrap(),
-        );
-
-        let expected_white_moves: u64 = PositionBuilder::new()
-            .add_piece('b', 3)
-            .add_piece('d', 4)
-            .add_piece('f', 4)
-            .add_piece('g', 3)
-            .build();
-        let expected_black_moves: u64 = PositionBuilder::new()
-            .add_piece('b', 6)
-            .add_piece('c', 3)
-            .add_piece('e', 3)
-            .add_piece('f', 2)
-            .add_piece('h', 2)
-            .build();
-
-        assert_eq!(
-            expected_white_moves,
-            compute_pawns_diagonal_captures(&board, true)
-        );
-        assert_eq!(
-            expected_black_moves,
-            compute_pawns_diagonal_captures(&board, false)
-        );
-    }
-
-    #[test]
-    fn test_pawns_double_moves() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 2)
-            .add_piece('d', 2)
-            .add_piece('e', 3)
-            .add_piece('f', 2)
-            .add_piece('g', 6) // block rank 6 for black
-            .build();
-
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 3) // block rank 2 for white
-            .add_piece('b', 7)
-            .add_piece('c', 6)
-            .add_piece('g', 7)
-            .add_piece('h', 7)
-            .build();
-
-        let expected_white_moves: u64 = PositionBuilder::new()
-            // a is blocked
-            .add_piece('d', 4)
-            .add_piece('f', 4)
-            .build();
-        let expected_black_moves: u64 = PositionBuilder::new()
-            .add_piece('b', 5)
-            // g is blocked
-            .add_piece('h', 5)
-            .build();
-
-        let board = Board::new(
-            white_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 1).unwrap(),
-            black_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 8).unwrap(),
-        );
-
-        assert_eq!(
-            expected_white_moves,
-            compute_pawns_double_moves(&board, true)
-        );
-        assert_eq!(
-            expected_black_moves,
-            compute_pawns_double_moves(&board, false)
-        );
-    }
-
-    #[test]
-    fn test_pawns_single_moves() {
-        let white_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 2) // blocked
-            .add_piece('b', 8) // can't move
-            .add_piece('d', 2)
-            .add_piece('e', 3)
-            .add_piece('f', 2)
-            .build();
-
-        let black_pawns: u64 = PositionBuilder::new()
-            .add_piece('a', 3) // block
-            .add_piece('g', 1) // can't move
-            .add_piece('h', 7)
-            .build();
-
-        let expected_white_moves: u64 = PositionBuilder::new()
-            .add_piece('d', 3)
-            .add_piece('e', 4)
-            .add_piece('f', 3)
-            .build();
-
-        let expected_black_moves: u64 = PositionBuilder::new().add_piece('h', 6).build();
-
-        let board = Board::new(
-            white_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 1).unwrap(),
-            black_pawns,
-            0,
-            0,
-            0,
-            0,
-            bitboard_single('e', 8).unwrap(),
-        );
-
-        assert_eq!(
-            expected_white_moves,
-            compute_pawns_single_moves(&board, true)
-        );
-        assert_eq!(
-            expected_black_moves,
-            compute_pawns_single_moves(&board, false)
-        );
-    }
-
-    #[test]
     fn test_white_pawns_moves() {
         let white_pawns: u64 = PositionBuilder::new()
             .add_piece('a', 2)
@@ -847,7 +626,7 @@ pub mod tests {
             bitboard_single('e', 8).unwrap(),
         );
 
-        assert_eq!(expected, compute_pawns_moves(&board, true));
+        assert_eq!(expected, compute_pawns_moves(&board, true).0);
     }
 
     #[test]
@@ -885,7 +664,7 @@ pub mod tests {
             bitboard_single('h', 8).unwrap(),
         );
 
-        assert_eq!(expected, compute_pawns_moves(&board, false));
+        assert_eq!(expected, compute_pawns_moves(&board, false).0);
     }
 
     #[test]
@@ -1738,7 +1517,6 @@ pub mod tests {
 
     #[test]
     fn test_resolve_sliding_pieces_path_blocked() {
-        // FIXME do this
         let board = Board::from_fen("4k3/8/1q1P2q1/7Q/5QQP/8/8/R3K2R");
 
         assert_eq!(
