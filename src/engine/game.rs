@@ -1,9 +1,6 @@
-use crate::board::{
-    is_file, is_rank, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_C, MASK_FILE_D,
-    MASK_FILE_F, MASK_FILE_G, MASK_FILE_H, MASK_RANK_1, MASK_RANK_8,
-};
-use crate::moves::{resolve_bishop_source, resolve_king_source, resolve_knight_source, resolve_pawn_source, resolve_queen_source, resolve_rook_source, BISHOP_RAYS_DIRECTIONS, BLACK_PAWN_MOVES, KING_MOVES, KNIGHT_MOVES, QUEEN_RAYS, QUEEN_RAYS_DIRECTIONS, RIGHT, ROOK_RAYS, ROOK_RAYS_DIRECTIONS, UP, UP_LEFT, UP_RIGHT, WHITE_PAWN_MOVES};
-use crate::parser::{parse_move, ParsedMove, Piece, SpecialMove};
+use crate::engine::board::{is_file, is_rank, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_C, MASK_FILE_D, MASK_FILE_F, MASK_FILE_G, MASK_FILE_H, MASK_RANK_1, MASK_RANK_8};
+use crate::engine::moves::{find_blocker_mask, resolve_bishop_source, resolve_king_source, resolve_knight_source, resolve_pawn_source, resolve_queen_source, resolve_rook_source, BISHOP_RAYS_DIRECTIONS, BLACK_PAWN_MOVES, KING_MOVES, KNIGHT_MOVES, QUEEN_RAYS, QUEEN_RAYS_DIRECTIONS, RIGHT, ROOK_RAYS, ROOK_RAYS_DIRECTIONS, UP, UP_LEFT, UP_RIGHT, WHITE_PAWN_MOVES};
+use crate::engine::parser::{parse_move, ParsedMove, Piece, SpecialMove};
 
 const MASK_CASTLING_PATH_KINGSIDE: u64 = (MASK_FILE_F | MASK_FILE_G) & (MASK_RANK_1 | MASK_RANK_8);
 const MASK_CASTLING_PATH_QUEENSIDE: u64 =
@@ -762,7 +759,7 @@ impl Game {
         }
 
         let king_idx = king.trailing_zeros() as usize;
-        for direction in 0..8 {
+        for direction in QUEEN_RAYS_DIRECTIONS {
             let ray = QUEEN_RAYS[king_idx][direction];
 
             // check only if from and to within the same ray
@@ -918,7 +915,7 @@ impl Game {
 
     fn detect_pins(&self, is_white: bool) -> u64 {
         let king = Self::get_pieces(&self.board, Piece::King, is_white);
-        let king_idx = king.trailing_zeros();
+        let king_idx = king.trailing_zeros() as usize;
 
         // own pieces exclude king
         let own_pieces = if is_white {
@@ -938,11 +935,11 @@ impl Game {
         let mut pinned_pieces: u64 = 0;
         // pin only happened through sliding pieces, check all sliding directions
 
-        for direction_from_king in 0..8 {
+        for direction_from_king in QUEEN_RAYS_DIRECTIONS {
             // opposite direction of the ray (add by 4 and modulo 8)
             let direction_to_king = (direction_from_king + 4) % 8;
+            let ray = QUEEN_RAYS[king_idx][direction_from_king];
 
-            let ray = QUEEN_RAYS[king_idx as usize][direction_from_king];
             let blockers = ray & own_pieces;
 
             // pin only happens there is only 1 piece blocking a ray
@@ -950,59 +947,37 @@ impl Game {
                 continue;
             }
 
-            let blocker = blockers.trailing_zeros();
-            let blocker_bit = 1u64 << blocker;
+            let blocker_idx = blockers.trailing_zeros() as usize;
+            let blocker_bit = 1u64 << blocker_idx;
 
             // found potential pin that can be attacked
             if opponent_sliding_moves & blocker_bit != 0 {
-                // find the attacker piece
-                let mut pinned = false;
-
-                let mut pieces = opponent_sliding_pieces;
+                // only filter the sliding pieces if the ray can reach the king (FROM KING outwards)
+                let candidate_pinners = opponent_sliding_pieces & QUEEN_RAYS[king_idx][direction_from_king];
+                let mut pieces = candidate_pinners;
                 while pieces != 0 {
                     let piece_idx = pieces.trailing_zeros() as usize;
 
+                    // the ray direction is TOWARDS the king
                     let opponent_ray = QUEEN_RAYS[piece_idx][direction_to_king];
+                    let (_, blocker_mask) = find_blocker_mask(opponent_ray, own_pieces, direction_to_king);
 
-                    // ray targeting king will hit the king
-                    if opponent_ray & king != 0 {
-                        // check opponent moves only at the ray direction
-                        let opponent_ray_to_blocker;
-                        // includes blocker bit in the ray to the blocker
-                        if direction_to_king == UP
-                            || direction_to_king == UP_RIGHT
-                            || direction_to_king == RIGHT
-                            || direction_to_king == UP_LEFT
-                        {
-                            opponent_ray_to_blocker =
-                                blocker_bit | opponent_ray & !(u64::MAX << blocker);
-                        } else {
-                            opponent_ray_to_blocker =
-                                blocker_bit | opponent_ray & (u64::MAX << blocker + 1);
-                        };
+                    // the ray will hit the king
+                    if blocker_mask & king != 0 {
+                        // get the opponent ray to the pinned piece
+                        let opponent_ray_to_blocker = opponent_ray & !blocker_mask;
 
-                        /*
-                        conditions:
-                        1. only 1 piece blocking ray of attack FROM king
-                        2. blocking piece can be hit from sliding pieces from opponents
-                        3. opponent RAY of attack can reach king
-                        4. opponent legal move can hit blocking piece and share the same oppoenent RAY line
-                         */
-
-                        // pin only if the moves from the piece overlap to the opponent ray to the blocker
-                        pinned = opponent_sliding_moves & opponent_ray_to_blocker
-                            == opponent_ray_to_blocker;
-                        if pinned {
+                        // pin only if actual opponent sliding move can hit the blocker and it is the
+                        // same as the opponent ray to blocker (e.g. no other friendly piece blocking
+                        // the opponent ray)
+                        if opponent_sliding_moves & opponent_ray_to_blocker == opponent_ray_to_blocker {
+                            pinned_pieces |= blocker_bit;
                             break;
                         }
                     }
 
                     // Remove the processed piece (use lsb approach)
                     pieces &= pieces - 1;
-                }
-
-                if pinned {
-                    pinned_pieces |= blocker_bit;
                 }
             }
         }

@@ -1,8 +1,8 @@
-use crate::board::{
+use crate::engine::board::{
     bitboard_single, is_file, is_rank, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_G, MASK_FILE_H,
     MASK_RANK_2, MASK_RANK_7,
 };
-use crate::parser::ParsedMove;
+use crate::engine::parser::ParsedMove;
 use crate::precompute_moves;
 /// move generation related, only generate pseudo-legal moves which ensure that
 /// moves are within bounds, exclude friendly pieces and exclude blocked pieces

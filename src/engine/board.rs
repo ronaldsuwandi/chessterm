@@ -1,5 +1,5 @@
-use crate::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves, compute_queens_moves, compute_rooks_moves, WHITE_PAWN_MOVES};
-use crate::parser::Piece;
+use crate::engine::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves, compute_queens_moves, compute_rooks_moves, WHITE_PAWN_MOVES};
+use crate::engine::parser::Piece;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Board {

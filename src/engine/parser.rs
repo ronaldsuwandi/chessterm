@@ -1,4 +1,4 @@
-use crate::board::bitboard_single;
+use crate::engine::board::bitboard_single;
 use std::str::Chars;
 
 #[derive(Debug, PartialEq, Clone, Copy)]

@@ -1,106 +1,67 @@
-// use crossterm::{l
-//     cursor, execute,
-//     style::{self, Color, Print, SetBackgroundColor, SetForegroundColor},
-//     terminal, ExecutableCommand,
-// };
-// use std::io::{stdout, Write};
-//
-// fn draw_chessboard() ->  Result<(), Box<dyn std::error::Error>> {
-//     let mut stdout = stdout();
-//
-//     // Define piece symbols and initial board state
-//     let pieces = vec![
-//         vec!["♖", "♘", "♗", "♕", "♔", "♗", "♘", "♖"],
-//         vec!["♙"; 8],
-//         vec![" "; 8],
-//         vec![" "; 8],
-//         vec![" "; 8],
-//         vec![" "; 8],
-//         vec!["♟"; 8],
-//         vec!["♜", "♞", "♝", "♛", "♚", "♝", "♞", "♜"],
-//     ];
-//
-//     // Draw chessboard
-//     stdout.execute(terminal::Clear(terminal::ClearType::All))?;
-//     for (row_idx, row) in pieces.iter().enumerate() {
-//         for (col_idx, &piece) in row.iter().enumerate() {
-//             // Alternate background colors
-//             let background_color = if (row_idx + col_idx) % 2 == 0 {
-//                 Color::White
-//             } else {
-//                 Color::Black
-//             };
-//             let foreground_color = if (row_idx + col_idx) % 2 == 0 {
-//                 Color::Red
-//             } else {
-//                 Color::Red
-//             };
-//
-//             // Move cursor and draw square
-//             stdout
-//                 .execute(cursor::MoveTo(col_idx as u16 * 2, row_idx as u16))?
-//                 .execute(SetBackgroundColor(background_color))?
-//                 .execute(SetForegroundColor(foreground_color))?
-//                 .execute(Print(format!(" {} ", piece)))?;
-//         }
-//         stdout.execute(Print("\n"))?;
-//     }
-//
-//     stdout.flush()?;
-//     Ok(())
-// }
+#![allow(unused)]
 
-use crate::game::{Game, MoveError};
+mod ui;
+mod engine;
 
-mod board;
-mod moves;
-mod game;
-mod macros;
-mod parser;
-
-fn main() -> Result<(), MoveError>{
-    let mut game = Game::default();
-    game.board.render();
-    game.process_move("e4")?;
-    // game.move_pawn(bitboard_single('e',2).unwrap(), bitboard_single('e',4).unwrap());
-    game.board.render();
-    game.process_move("e5")?;
-    game.board.render();
-    game.process_move("e5")?;
-    game.board.render();
-    // game.move_pawn(bitboard_single('f',7).unwrap(), bitboard_single('f',5).unwrap());
-    // game.board.render();
-    // game.move_pawn(bitboard_single('d',2).unwrap(), bitboard_single('d',3).unwrap());
-    // game.board.render();
-    // game.move_knight(bitboard_single('g',8).unwrap(), bitboard_single('f',6).unwrap());
-    // game.board.render();
-    // game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap());
-    // game.board.render();
-    // // move black c8->c7 bishop (invalid)
-    // game.move_pawn(bitboard_single('c',8).unwrap(), bitboard_single('c',7).unwrap());
-    // game.board.render();
-    // game.move_pawn(bitboard_single('c',7).unwrap(), bitboard_single('c',5).unwrap());
-    // game.board.render();
-    // game.move_bishop(bitboard_single('f',1).unwrap(), bitboard_single('e',2).unwrap());
-    // game.board.render();
-    // // println!("CAPTURE F5");
-    // // println!("{}", game.move_pawn(bitboard_single('e',4).unwrap(), bitboard_single('f',5).unwrap(), true));
-    // game.board.render();
-    //
-    // // invalid rook move
-    // game.move_rook(bitboard_single('a',1).unwrap(), bitboard_single('b',1).unwrap());
-    // game.board.render();
-    //
-    // game.move_pawn(bitboard_single('b',7).unwrap(), bitboard_single('b',5).unwrap());
-    // game.move_pawn(bitboard_single('a',2).unwrap(), bitboard_single('a',4).unwrap());
-    // game.board.render();
-    // game.move_pawn(bitboard_single('b',5).unwrap(), bitboard_single('a',4).unwrap());
-    // game.board.render();
-    // game.move_rook(bitboard_single('a',1).unwrap(), bitboard_single('a',4).unwrap());
-    // game.board.render();
+use std::io;
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::ExecutableCommand;
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use ratatui::{DefaultTerminal, Frame};
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::style::Stylize;
+use ratatui::symbols::border;
+use ratatui::text::{Line, Text};
+use ratatui::widgets::{Block, Paragraph, Widget};
+use crate::ui::app::{App, CurrentScreen};
+use crate::ui::ui::ui;
 
 
-    // println!("black2");
-    // render_bitboard(&game.board.black_pawns, 'b');
+
+fn main() -> Result<(), io::Error> {
+    let mut terminal = ratatui::init();
+    let mut app = App::new();
+    run(&mut terminal, &mut app)?;
+    ratatui::restore();
     Ok(())
+}
+
+
+fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<bool> {
+    // while !self.exit {
+    loop {
+        terminal.show_cursor()?;
+        terminal.draw(|frame| ui(frame, app))?;
+        if let Event::Key(key) = event::read()? {
+            if key.kind == KeyEventKind::Press {
+                match app.current_screen {
+                    CurrentScreen::Main => {
+                        match key.code {
+                            KeyCode::Esc => app.current_screen = CurrentScreen::Exiting,
+                            KeyCode::Enter => app.process_cmd(),
+                            KeyCode::Char(to_insert) => app.add_char(to_insert),
+                            KeyCode::Backspace => app.delete_char(),
+                            _ => {}
+                        }
+                    }
+
+                    CurrentScreen::GameOver => {}
+                    CurrentScreen::Exiting => {
+                        match key.code {
+                            KeyCode::Char('y') => {
+                                return Ok(true)
+                            }
+                            KeyCode::Char('n') | KeyCode::Esc => {
+                                app.current_screen = CurrentScreen::Main;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+
+    //     self.handle_events()?;
+    }
 }
