@@ -21,6 +21,7 @@ pub struct App {
     pub game: Game,
     pub error: Option<MoveError>,
     pub moves: Vec<String>,
+    pub flipped: bool,
 }
 
 
@@ -34,10 +35,6 @@ pub enum CurrentlyEditing {
     Key,
     Value,
 }
-//
-// pub struct Assets {
-//
-// }
 
 const MAX_MOVE_LENGTH: usize = 6;
 
@@ -79,10 +76,16 @@ impl App {
             game: Game::default(),
             error: None,
             moves: Vec::new(),
+            flipped: false,
         }
     }
 
     pub fn process_cmd(&mut self) {
+        // do nothing
+        if self.input.trim().is_empty() {
+            return;
+        }
+
         match self.game.process_move(self.input.as_str()) {
             Ok(_) => {
                 self.error = None;

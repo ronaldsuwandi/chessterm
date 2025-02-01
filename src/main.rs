@@ -35,6 +35,11 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<bool> {
         terminal.draw(|frame| ui(frame, app))?;
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
+                if key.code == KeyCode::Char('.') {
+                    app.flipped = !app.flipped;
+                    continue;
+                }
+
                 match app.current_screen {
                     CurrentScreen::Main => {
                         match key.code {

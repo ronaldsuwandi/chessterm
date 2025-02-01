@@ -121,13 +121,13 @@ pub fn ui(frame: &mut Frame, app: &App) {
     let chessboard_block = Block::default()
         .borders(Borders::ALL);
     let chess = Paragraph::new(
-        Text::styled("dummy board", Style::default().fg(Color::Blue)))
+        Text::styled(format!("dummy board. flip? {}", app.flipped), Style::default().fg(Color::Blue)))
             .block(chessboard_block);
     frame.render_widget(chess, content_layout[0]);
 
 
     let moves_layout = Layout::vertical([
-            Constraint::Max(30),
+            Constraint::Length(3),
             Constraint::Fill(1),
         ])
         .split(content_layout[1]);
@@ -202,23 +202,13 @@ pub fn ui(frame: &mut Frame, app: &App) {
 
     frame.render_widget(table, moves_layout[1]);
 
-    let current_navigation_text = vec![
-        // The first half of the text
-        match app.current_screen {
-            CurrentScreen::Main => Span::styled("Normal Mode", Style::default().fg(Color::Green)),
-            CurrentScreen::Exiting => Span::styled("Exiting", Style::default().fg(Color::LightRed)),
-            CurrentScreen::GameOver => Span::styled("Game Over", Style::default().fg(Color::LightRed)),
-        }.to_owned(),
-
-
-        // A white divider bar to separate the two sections
-        Span::styled(" | ", Style::default().fg(Color::White)),
-        Span::styled(app.input.as_str(), Style::default().fg(Color::White)),
-    ];
-
-
     let footer = Paragraph::new(
-        Text::styled("Press ESC to quit", Style::default().fg(Color::Gray)))
+        Line::from(vec![
+            "Flip ".into(),
+            "[.]".blue().bold(),
+            "  Quit ".into(),
+            "[ESC]".blue().bold()
+        ]))
         .alignment(Alignment::Center)
         .block(Block::default());
 
