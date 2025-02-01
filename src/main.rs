@@ -46,13 +46,24 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<bool> {
                         }
                     }
 
-                    CurrentScreen::GameOver => {}
+                    CurrentScreen::GameOver => {
+                        match key.code {
+                            KeyCode::Char('y') => {
+                                app.current_screen = CurrentScreen::Main;
+                                app.new_game();
+                            }
+                            KeyCode::Char('n') | KeyCode::Esc => {
+                                return Ok(true)
+                            }
+                            _ => {}
+                        }
+                    }
                     CurrentScreen::Exiting => {
                         match key.code {
                             KeyCode::Char('y') => {
                                 return Ok(true)
                             }
-                            KeyCode::Char('n') | KeyCode::Esc => {
+                            KeyCode::Char('n') => {
                                 app.current_screen = CurrentScreen::Main;
                             }
                             _ => {}
@@ -61,7 +72,5 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<bool> {
                 }
             }
         }
-
-    //     self.handle_events()?;
     }
 }

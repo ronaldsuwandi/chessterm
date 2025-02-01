@@ -8,6 +8,7 @@ use ratatui::{DefaultTerminal, Frame};
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
 use ratatui_image::StatefulImage;
+use crate::engine::game::{Game, MoveError, Status};
 use crate::ui::ui;
 
 pub struct App {
@@ -16,6 +17,10 @@ pub struct App {
 
     pub input: String,
     pub character_index: usize,
+
+    pub game: Game,
+    pub error: Option<MoveError>,
+    pub moves: Vec<String>,
 }
 
 
@@ -71,11 +76,28 @@ impl App {
             chess_pieces: pieces,
             input: String::new(),
             character_index: 0,
+            game: Game::default(),
+            error: None,
+            moves: Vec::new(),
         }
     }
 
     pub fn process_cmd(&mut self) {
+        match self.game.process_move(self.input.as_str()) {
+            Ok(_) => {
+                self.error = None;
+                self.moves.push(self.input.clone());
+                self.input.clear();
 
+                if self.game.status != Status::Ongoing {
+                    self.current_screen = CurrentScreen::GameOver;
+                }
+            }
+            Err(err) => {
+                self.error = Some(err);
+            }
+
+        }
     }
     fn move_cursor_left(&mut self) {
         let cursor_moved_left = self.character_index.saturating_sub(1);
@@ -99,10 +121,19 @@ impl App {
         if self.input.chars().count() < MAX_MOVE_LENGTH {
             self.input.push(ch);
             self.move_cursor_right();
+            self.error = None;
         }
     }
     pub fn delete_char(&mut self) {
         self.input.pop();
+        self.error = None;
         self.move_cursor_left();
+    }
+
+    pub fn new_game(&mut self) {
+        self.game = Game::default();
+        self.input.clear();
+        self.moves.clear();
+        self.error = None;
     }
 }

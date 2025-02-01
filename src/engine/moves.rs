@@ -416,7 +416,11 @@ pub fn resolve_pawn_source(board: &Board, parsed_move: &ParsedMove, is_white: bo
         if parsed_move.is_capture {
             // find the target rank, move 1 step backward
             let rank = target_rank - 1;
-            bitboard_single(parsed_move.from_file.unwrap(), rank).unwrap() & board.white_pawns
+            if rank <= 0 {
+                0
+            } else {
+                bitboard_single(parsed_move.from_file.unwrap(), rank).unwrap() & board.white_pawns
+            }
         } else {
             // figure out from either 1 step or 2 steps backwards
             parsed_move.to >> 8 & board.white_pawns | parsed_move.to >> 16 & board.white_pawns
@@ -425,7 +429,11 @@ pub fn resolve_pawn_source(board: &Board, parsed_move: &ParsedMove, is_white: bo
         if parsed_move.is_capture {
             // find the target rank, move 1 step backward
             let rank = target_rank + 1;
-            bitboard_single(parsed_move.from_file.unwrap(), rank).unwrap() & board.black_pawns
+            if rank >= 8 {
+                0
+            } else {
+                bitboard_single(parsed_move.from_file.unwrap(), rank).unwrap() & board.black_pawns
+            }
         } else {
             // figure out from either 1 step or 2 steps backwards
             parsed_move.to << 8 & board.black_pawns | parsed_move.to << 16 & board.black_pawns
