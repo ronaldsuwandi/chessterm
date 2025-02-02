@@ -590,8 +590,8 @@ pub fn resolve_queen_source(board: &Board, parsed_move: &ParsedMove, is_white: b
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::board::{bit_pos, Board, PositionBuilder};
-    use crate::parser::parse_move;
+    use crate::engine::board::{bit_pos, Board, PositionBuilder};
+    use crate::engine::parser::parse_move;
 
     #[test]
     fn test_white_pawns_moves() {

@@ -1200,7 +1200,7 @@ impl Default for Game {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::board::{bitboard_single, Board, PositionBuilder};
+    use crate::engine::board::{bitboard_single, Board, PositionBuilder};
 
     fn process_moves(game: &mut Game, moves: &[&str]) {
         for &mv in moves {

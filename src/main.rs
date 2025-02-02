@@ -4,10 +4,12 @@ mod ui;
 mod engine;
 
 use std::io;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use crossterm::ExecutableCommand;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use ratatui::{DefaultTerminal, Frame};
+use std::io::{stdout, Error, ErrorKind, Stdout};
+use crossterm::event::{self, DisableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::{execute, terminal, ExecutableCommand};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use ratatui::{DefaultTerminal, Frame, Terminal};
+use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
@@ -15,9 +17,23 @@ use ratatui::symbols::border;
 use ratatui::text::{Line, Text};
 use ratatui::widgets::{Block, Paragraph, Widget};
 use crate::ui::app::{App, CurrentScreen};
-use crate::ui::ui::ui;
+use crate::ui::ui::render;
 
+const MIN_WIDTH: u16 = 140;
+const MIN_HEIGHT: u16 = 46;
 
+fn check_size(terminal: &mut DefaultTerminal) -> bool {
+    let size = terminal.size().unwrap();
+    if size.width < MIN_WIDTH || size.height < MIN_HEIGHT {
+        terminal.clear();
+        println!("TOO SMALL");
+        false
+        // return Err(Error::new(ErrorKind::Other, format!("Terminal must have at least {MIN_WIDTH} x {MIN_HEIGHT} dimension. Current size: {} x {}", size.width, size.height)));
+    } else {
+        true
+    }
+    // Ok(())
+}
 
 fn main() -> Result<(), io::Error> {
     let mut terminal = ratatui::init();
@@ -27,12 +43,13 @@ fn main() -> Result<(), io::Error> {
     Ok(())
 }
 
-
 fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<bool> {
-    // while !self.exit {
     loop {
-        terminal.show_cursor()?;
-        terminal.draw(|frame| ui(frame, app))?;
+        if !check_size(terminal) {
+            continue;
+        }
+        terminal.hide_cursor()?;
+        terminal.draw(|frame| render(frame, app))?;
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
                 if key.code == KeyCode::Char('.') {

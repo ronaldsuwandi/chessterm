@@ -1,46 +1,18 @@
 use std::ops::Add;
+use image::imageops::FilterType;
 use ratatui::buffer::Buffer;
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Position, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Offset, Position, Rect};
 use ratatui::prelude::{Line, Stylize, Text, Widget};
 use ratatui::style::{Color, Style};
 use ratatui::symbols::border;
 use ratatui::text::Span;
-use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, Wrap};
-use ratatui_image::{Image, StatefulImage};
+use ratatui::widgets::{Block, Borders, Cell, Clear, Padding, Paragraph, Row, Table, Wrap};
+use ratatui_image::{Image, Resize, StatefulImage};
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::ImageSource;
 use crate::engine::game::MoveError;
 use crate::ui::app::{App, CurrentScreen};
-
-impl Widget for &App {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Line::from(" Yoo ".bold());
-        let instructions = Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().bold(),
-            " Quit ".into(),
-            "<Q>".blue().bold(),
-        ]);
-        let block = Block::bordered()
-            .title(title.centered())
-            .title_bottom(instructions.centered())
-            .border_set(border::THICK);
-
-        let counter_text = Text::from(vec![Line::from(vec![
-            "Value: ".into(),
-            // self.counter.to_string().yellow()
-        ])]);
-
-        Paragraph::new(counter_text)
-            .centered()
-            .block(block)
-            .render(area, buf);
-
-    }
-}
 
 const ERROR_MOVE: &str = "×";
 const ERROR_AMBIGUOUS: &str = "? Ambiguous";
@@ -59,41 +31,85 @@ fn render_error<'a>(err: Option<MoveError>) -> Span<'a> {
 }
 
 fn render_board(app: &App, frame: &mut Frame, area: Rect) {
-    // for (k, mut v) in app.chess_pieces {
-    // let stateful_image = StatefulImage::default();
-    // let img = app.chess_pieces.get_mut(&'q');
-    // frame.render_stateful_widget(stateful_image, area, img.unwrap());
-    // }
-    let board_area = frame.area();
+    let constraint = 12;
 
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Ratio(1, 8); 8]) // 8 equal rows
-        .split(board_area);
+    let board_horizontal = Layout::horizontal(
+        [Constraint::Length(3), Constraint::Length(constraint * 8)]
+    ).split(area);
 
-    for (row_idx, &row) in rows.iter().enumerate() {
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Ratio(1, 8); 8]) // 8 equal columns
-            .split(row);
+    let board_vertical = Layout::vertical(
+        [Constraint::Length((constraint/2) * 8), Constraint::Length(1)]
+    ).split(board_horizontal[1]);
 
-        for (col_idx, &col) in cols.iter().enumerate() {
-            let is_dark_square = (row_idx + col_idx) % 2 == 1;
-            let square_color = if is_dark_square { Color::DarkGray } else { Color::White };
+    let rank_constraints = [Constraint::Length(constraint/2); 8];
+    let rank_layout = Layout::vertical(rank_constraints).split(board_vertical[0]);
 
-            let square = Block::default()
-                .title(Span::styled(" ", Style::default().fg(square_color)))
-                .borders(Borders::ALL);
+    // copy rank layout setup (vertical spacing)
+    let mut rank_layout_constraints = [Constraint::Length(constraint/2); 9];
+    rank_layout_constraints[8] = Constraint::Length(1);
 
-            frame.render_widget(square, col);
+    let rank_label_layout = Layout::vertical(rank_layout_constraints).split(board_horizontal[0]);
+    let pieces = app.game.board.pieces_array(false);
+
+    for (rank, files) in pieces.iter().enumerate().rev() {
+        let actual_rank = if app.flipped { rank } else { 7 - rank }; // Flip ranks
+        let rank_layout_idx = actual_rank; // in reverse order for rendering
+
+        let file_layout = Layout::horizontal([Constraint::Length(constraint); 8]).split(rank_layout[rank_layout_idx]);
+
+        let rank_label = Paragraph::new(format!("{}", rank+1))
+            .fg(Color::Yellow)
+            .bold()
+            .alignment(Alignment::Center);
+        frame.render_widget(rank_label, rank_label_layout[rank_layout_idx]);
+
+        // iterate files
+        for (file, piece) in files.iter().enumerate() {
+            let actual_file = if app.flipped { 7 - file } else { file }; // Flip files
+
+            let is_white =  (rank + file) & 1 == 1;
+            let bg = if is_white { Color::Rgb(235, 209, 166) } else { Color::Rgb(165, 117, 80) };
+
+            let square = Block::default().bg(bg);
+
+            // let t = Paragraph::new(
+            //         Line::from(format!("w={},h={}", file_layout[file].width, file_layout[file].height))
+            //         // Line::from(format!("r={rank},f={file},i={piece}"))
+            //             .fg(Color::Black)
+            //             .bg(Color::Red))
+            //     .block(square);
+            frame.render_widget(square, file_layout[actual_file]);
+
+            if *piece != '.' {
+                let protocol_ref = app.chess_pieces.get(piece).unwrap();
+                let i = StatefulImage::default();
+                frame.render_stateful_widget(i, file_layout[actual_file], &mut protocol_ref.borrow_mut());
+            }
         }
     }
+
+    let file_label_layout = Layout::horizontal([Constraint::Length(constraint); 8])
+        .split(board_vertical[1]);
+
+    for file in 0..8 {
+        let actual_file = if app.flipped { 7 - file } else { file }; // Flip files
+
+        let f = (actual_file as u8 + 'A' as u8) as char;;
+        let file_label = Paragraph::new(format!("{}",f))
+            .fg(Color::Yellow)
+            .bold()
+            .alignment(Alignment::Left);
+        frame.render_widget(file_label, file_label_layout[file])
+    }
+    //     let file_idx = file as u8 - 'a' as u8;
+    // Some((rank - 1) * 8 + file_idx as u64)
 }
 
-pub fn ui(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &App) {
     let main_layout = Layout::vertical([
             Constraint::Length(3),
-            Constraint::Min(1),
+            Constraint::Length(41), // use fixed size for divisible by 8 (add extra 1 row for label)
+            Constraint::Fill(1), // filler
             Constraint::Length(2),
         ])
         .split(frame.area());
@@ -107,24 +123,17 @@ pub fn ui(frame: &mut Frame, app: &App) {
         Style::default().fg(Color::Green),
     )).alignment(Alignment::Center)
         .block(title_block);
-
     frame.render_widget(title, main_layout[0]);
 
 
     let content_layout = Layout::horizontal([
+            Constraint::Min(132),
             Constraint::Fill(1),
-            Constraint::Max(50),
         ])
         .split(main_layout[1]);
 
 
-    let chessboard_block = Block::default()
-        .borders(Borders::ALL);
-    let chess = Paragraph::new(
-        Text::styled(format!("dummy board. flip? {}", app.flipped), Style::default().fg(Color::Blue)))
-            .block(chessboard_block);
-    frame.render_widget(chess, content_layout[0]);
-
+    render_board(app, frame, content_layout[0]);
 
     let moves_layout = Layout::vertical([
             Constraint::Length(3),
@@ -167,23 +176,9 @@ pub fn ui(frame: &mut Frame, app: &App) {
             let white_move = chunk.get(0).map(|s| s.to_string()).unwrap_or_else(|| "".to_string());
             let black_move = chunk.get(1).map(|s| s.to_string()).unwrap_or_else(|| "".to_string());
 
-
             Row::new([format!("{}", i + 1), white_move, black_move])
         })
         .collect();
-
-    // let rows = app.moves.iter().enumerate().map(|(i, data)| {
-    //     // let color = match i % 2 {
-    //     //     0 => self.colors.normal_row_color,
-    //     //     _ => self.colors.alt_row_color,
-    //     // };
-    //     let item = data.clone();
-    //     item.into_iter()
-    //         .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
-    //         .collect::<Row>()
-    //         // .style(Style::new().fg(self.colors.row_fg).bg(color))
-    //         .height(4)
-    // });
 
     let widths = [
         Constraint::Length(3),
@@ -191,15 +186,14 @@ pub fn ui(frame: &mut Frame, app: &App) {
         Constraint::Percentage(50),
     ];
 
-
     let moves = Block::default()
         .borders(Borders::ALL)
         .title("Moves");
 
+    // FIXME handle scrolling
     let table = Table::new(rows, widths)
         .header(header)
         .block(moves);
-
     frame.render_widget(table, moves_layout[1]);
 
     let footer = Paragraph::new(
@@ -212,11 +206,12 @@ pub fn ui(frame: &mut Frame, app: &App) {
         .alignment(Alignment::Center)
         .block(Block::default());
 
-    frame.render_widget(footer, main_layout[2]);
+    frame.render_widget(footer, main_layout[3]);
 
     match app.current_screen {
         CurrentScreen::Main => {}
         CurrentScreen::Exiting => {
+
             let popup_block = Block::default()
                 .title("Confirm exit game")
                 .borders(Borders::ALL)
@@ -235,6 +230,7 @@ pub fn ui(frame: &mut Frame, app: &App) {
                 .wrap(Wrap { trim: false });
 
             let area = centered_rect(40, 10, frame.area());
+            frame.render_widget(Clear, area); // clear the area behind popup
             frame.render_widget(exit_paragraph, area);
         }
         CurrentScreen::GameOver => {

@@ -358,38 +358,37 @@ impl Board {
         }
     }
 
-    // Temporary helper function to render the chess board in terminal
-    pub fn render(&self) {
+    pub fn pieces_array(&self, unicode: bool) -> [[char; 8]; 8] {
         let mut board_representation = [[' '; 8]; 8];
         // Combine all pieces into a single representation
-        for rank in (0..8).rev() {
+        for rank in 0..8 {
             for file in 0..8 {
                 let square_index = rank * 8 + file;
 
                 let piece = if (self.white_pawns >> square_index) & 1 != 0 {
-                    '♟'
+                    if unicode { '♟' } else { 'P' }
                 } else if (self.black_pawns >> square_index) & 1 != 0 {
-                    '♙'
+                    if unicode { '♙' } else { 'p' }
                 } else if (self.white_rooks >> square_index) & 1 != 0 {
-                    '♜'
+                    if unicode { '♜' } else { 'R' }
                 } else if (self.black_rooks >> square_index) & 1 != 0 {
-                    '♖'
+                    if unicode { '♖' } else { 'r' }
                 } else if (self.white_knights >> square_index) & 1 != 0 {
-                    '♞'
+                    if unicode { '♞' } else { 'N' }
                 } else if (self.black_knights >> square_index) & 1 != 0 {
-                    '♘'
+                    if unicode { '♘' } else { 'n' }
                 } else if (self.white_bishops >> square_index) & 1 != 0 {
-                    '♝'
+                    if unicode { '♝' } else { 'B' }
                 } else if (self.black_bishops >> square_index) & 1 != 0 {
-                    '♗'
+                    if unicode { '♗' } else { 'b' }
                 } else if (self.white_queens >> square_index) & 1 != 0 {
-                    '♛'
+                    if unicode { '♛' } else { 'Q' }
                 } else if (self.black_queens >> square_index) & 1 != 0 {
-                    '♕'
+                    if unicode { '♕' } else { 'q' }
                 } else if (self.white_king >> square_index) & 1 != 0 {
-                    '♚'
+                    if unicode { '♚' } else { 'K' }
                 } else if (self.black_king >> square_index) & 1 != 0 {
-                    '♔'
+                    if unicode { '♔' } else { 'k' }
                 } else {
                     '.' // Empty square
                 };
@@ -397,13 +396,19 @@ impl Board {
                 board_representation[rank as usize][file as usize] = piece;
             }
         }
+        board_representation
+    }
+
+    // Temporary helper function to render the chess board in terminal
+    pub fn render(&self) {
+
 
         // Render the board
         println!("  +------------------------+");
-        for (rank, row) in board_representation.iter().enumerate().rev() {
+        for (rank, row) in self.pieces_array((true)).iter().enumerate().rev() {
             print!("{} |", rank + 1); // Print rank number
-            for piece in row {
-                print!(" {} ", piece);
+            for (file,piece) in row.iter().enumerate() {
+                print!(" r={rank},f={file},{} ", piece);
             }
             println!("|");
         }
@@ -905,5 +910,11 @@ pub mod tests {
             let pos = bitboard_single(file, rank).unwrap();
             assert_eq!(piece, board.get_piece_type_at(pos));
         }
+    }
+
+    #[test]
+    fn test() {
+        let board = Board::default();
+        board.render();
     }
 }
