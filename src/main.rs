@@ -3,7 +3,7 @@
 mod ui;
 mod engine;
 
-use std::io;
+use std::{io, process};
 use std::io::{stdout, Error, ErrorKind, Stdout};
 use crossterm::event::{self, DisableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind};
 use crossterm::{execute, terminal, ExecutableCommand};
@@ -15,25 +15,38 @@ use ratatui::layout::Rect;
 use ratatui::style::Stylize;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Text};
-use ratatui::widgets::{Block, Paragraph, Widget};
+use ratatui::widgets::{Block, Clear, Paragraph, Widget};
 use crate::ui::app::{App, CurrentScreen};
-use crate::ui::ui::render;
+use crate::ui::ui::{render, render_size_error};
 
-const MIN_WIDTH: u16 = 140;
-const MIN_HEIGHT: u16 = 46;
+pub const MIN_WIDTH: u16 = 140;
+pub const MIN_HEIGHT: u16 = 46;
 
-fn check_size(terminal: &mut DefaultTerminal) -> bool {
-    let size = terminal.size().unwrap();
+fn check_size(terminal: &mut DefaultTerminal) -> Result<(), io::Error> {
+    let size = terminal.size()?;
     if size.width < MIN_WIDTH || size.height < MIN_HEIGHT {
         terminal.clear();
-        println!("TOO SMALL");
-        false
-        // return Err(Error::new(ErrorKind::Other, format!("Terminal must have at least {MIN_WIDTH} x {MIN_HEIGHT} dimension. Current size: {} x {}", size.width, size.height)));
-    } else {
-        true
+        terminal.draw(|frame| render_size_error(frame, MIN_WIDTH, MIN_HEIGHT, size))?;
+
+        loop {
+            match event::read()? {
+                Event::Resize(new_width, new_height) => {
+                    if new_width >= MIN_WIDTH && new_height >= MIN_HEIGHT {
+                        return Ok(());
+                    }
+                }
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL) || key.code == KeyCode::Esc {
+                        process::exit(0);
+                    }
+                }
+                _ => {}
+            }
+        }
     }
-    // Ok(())
+    Ok(())
 }
+
 
 fn main() -> Result<(), io::Error> {
     let mut terminal = ratatui::init();
@@ -45,16 +58,29 @@ fn main() -> Result<(), io::Error> {
 
 fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<bool> {
     loop {
-        if !check_size(terminal) {
-            continue;
-        }
+        check_size(terminal)?;
         terminal.hide_cursor()?;
         terminal.draw(|frame| render(frame, app))?;
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
-                if key.code == KeyCode::Char('.') {
-                    app.flipped = !app.flipped;
-                    continue;
+                match key.code {
+                    KeyCode::Char('.') => {
+                        app.flipped = !app.flipped;
+                        continue;
+                    },
+                    KeyCode::Up => {
+                        if app.show_scrollbar {
+                            app.scroll_up(1);
+                        }
+                        continue;
+                    },
+                    KeyCode::Down => {
+                        if app.show_scrollbar {
+                            app.scroll_down(1);
+                        }
+                        continue;
+                    }
+                    _ => {},
                 }
 
                 match app.current_screen {

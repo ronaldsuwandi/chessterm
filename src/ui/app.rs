@@ -9,6 +9,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use image::{DynamicImage, ImageReader};
 use ratatui::{DefaultTerminal, Frame};
 use ratatui::layout::Rect;
+use ratatui::widgets::{ScrollbarState, TableState};
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
 use ratatui_image::{Image, Resize, StatefulImage};
@@ -18,23 +19,34 @@ use crate::engine::game::{Game, MoveError, Status};
 use crate::ui::ui;
 
 pub struct App {
-    pub current_screen: CurrentScreen,
-    pub chess_pieces: HashMap<char, RefCell<StatefulProtocol>>,
+    pub game: Game,
 
+    // TUI
+    pub current_screen: CurrentScreen,
+
+    // input
     pub input: String,
     pub character_index: usize,
-
-    pub game: Game,
     pub error: Option<MoveError>,
     pub moves: Vec<String>,
+    pub visible_moves: usize,
+
+    pub show_scrollbar: bool,
+    pub scrollbar_state: ScrollbarState,
+    pub scroll_offset: usize,
+    pub table_state: TableState,
     pub flipped: bool,
 
+    // image related
+    pub chess_pieces: HashMap<char, RefCell<StatefulProtocol>>,
     pub picker: Picker,
+
 
     _audio_stream: OutputStream,
     audio_stream_handle: OutputStreamHandle,
 
     audio_buffers: HashMap<Audio, SamplesBuffer<f32>>,
+    audio_sink: Sink,
 
 }
 
@@ -114,20 +126,33 @@ impl App {
             audio_buffers.insert(audio_type, buffer);
         }
 
+        let audio_sink = Sink::try_new(&audio_stream_handle).unwrap();
+
+
         App {
+            game: Game::default(),
+
             current_screen: CurrentScreen::Main,
-            chess_pieces: pieces,
+
             input: String::new(),
             character_index: 0,
-            game: Game::default(),
             error: None,
             moves: Vec::new(),
+            visible_moves: 0,
+            show_scrollbar: false,
+            scrollbar_state: ScrollbarState::default(),
+            scroll_offset: 0,
+            table_state: TableState::default(),
+
             flipped: false,
+
+            chess_pieces: pieces,
             picker,
 
             _audio_stream,
             audio_stream_handle,
-            audio_buffers: audio_buffers,
+            audio_buffers,
+            audio_sink,
         }
     }
 
@@ -140,16 +165,33 @@ impl App {
         match self.game.process_move(self.input.as_str()) {
             Ok(_) => {
                 self.error = None;
-                self.moves.push(self.input.clone());
+
+                let mut rendered_input = self.input.clone();
+
+                // append checkmate/check symbol
+                if self.game.status == Status::Checkmate {
+                    rendered_input.push('#');
+                } else if self.game.check {
+                    rendered_input.push('+');
+                }
+
+                self.moves.push(rendered_input);
                 self.input.clear();
+                self.reset_cursor();
 
                 if self.game.status != Status::Ongoing {
                     self.current_screen = CurrentScreen::GameOver;
-
                     self.play_audio(Audio::Notify);
                 } else {
                     self.play_audio(Audio::Move);
                 }
+
+                // auto scroll
+                self.show_scrollbar = self.moves.len().div_ceil(2) > self.visible_moves;
+                if self.show_scrollbar {
+                    self.scroll_down(self.visible_moves);
+                }
+
             }
             Err(err) => {
                 self.error = Some(err);
@@ -161,9 +203,7 @@ impl App {
 
     fn play_audio(&self, audio_type: Audio) {
         if let Some(buffer) = self.audio_buffers.get(&audio_type) {
-            let sink = Sink::try_new(&self.audio_stream_handle).unwrap();
-            sink.append(buffer.clone());
-            sink.detach();
+            self.audio_sink.append(buffer.clone());
         }
     }
 
@@ -183,6 +223,14 @@ impl App {
 
     fn reset_cursor(&mut self) {
         self.character_index = 0;
+    }
+
+    pub fn scroll_up(&mut self, amount: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(amount).clamp(0, self.moves.len());
+    }
+
+    pub fn scroll_down(&mut self, amount: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_add(amount).clamp(0, self.moves.len());
     }
 
     pub fn add_char(&mut self, ch: char) {

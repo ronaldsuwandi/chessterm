@@ -535,7 +535,6 @@ impl Game {
     }
 
     fn process_castling(&mut self, mv: ParsedMove, is_white: bool) -> Result<(), MoveError> {
-        // TODO refactor the code
         if let Some(special_move) = mv.special_move {
             let king = Self::get_pieces(&self.board, Piece::King, is_white);
             let rooks = Self::get_pieces(&self.board, Piece::Rook, is_white);
