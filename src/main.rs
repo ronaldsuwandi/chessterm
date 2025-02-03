@@ -1,14 +1,15 @@
 #![allow(unused)]
 
-mod ui;
 mod engine;
+mod ui;
 
-use std::{io, process};
-use std::io::{stdout, Error, ErrorKind, Stdout};
+use crate::ui::app::{App, CurrentScreen};
+use crate::ui::ui::{render, render_size_error};
 use crossterm::event::{self, DisableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use crossterm::{execute, terminal, ExecutableCommand};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
-use ratatui::{DefaultTerminal, Frame, Terminal};
 use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -16,8 +17,9 @@ use ratatui::style::Stylize;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Widget};
-use crate::ui::app::{App, CurrentScreen};
-use crate::ui::ui::{render, render_size_error};
+use ratatui::{DefaultTerminal, Frame, Terminal};
+use std::io::{stdout, Error, ErrorKind, Stdout};
+use std::{io, process};
 
 pub const MIN_WIDTH: u16 = 140;
 pub const MIN_HEIGHT: u16 = 46;
@@ -36,7 +38,11 @@ fn check_size(terminal: &mut DefaultTerminal) -> Result<(), io::Error> {
                     }
                 }
                 Event::Key(key) => {
-                    if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL) || key.code == KeyCode::Esc {
+                    if key.kind == KeyEventKind::Press
+                        && key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(event::KeyModifiers::CONTROL)
+                        || key.code == KeyCode::Esc
+                    {
                         process::exit(0);
                     }
                 }
@@ -46,7 +52,6 @@ fn check_size(terminal: &mut DefaultTerminal) -> Result<(), io::Error> {
     }
     Ok(())
 }
-
 
 fn main() -> Result<(), io::Error> {
     let mut terminal = ratatui::init();
@@ -67,56 +72,46 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<bool> {
                     KeyCode::Char('.') => {
                         app.flipped = !app.flipped;
                         continue;
-                    },
+                    }
                     KeyCode::Up => {
                         if app.show_scrollbar {
                             app.scroll_up(1);
                         }
                         continue;
-                    },
+                    }
                     KeyCode::Down => {
                         if app.show_scrollbar {
                             app.scroll_down(1);
                         }
                         continue;
                     }
-                    _ => {},
+                    _ => {}
                 }
 
                 match app.current_screen {
-                    CurrentScreen::Main => {
-                        match key.code {
-                            KeyCode::Esc => app.current_screen = CurrentScreen::Exiting,
-                            KeyCode::Enter => app.process_cmd(),
-                            KeyCode::Char(to_insert) => app.add_char(to_insert),
-                            KeyCode::Backspace => app.delete_char(),
-                            _ => {}
-                        }
-                    }
+                    CurrentScreen::Main => match key.code {
+                        KeyCode::Esc => app.current_screen = CurrentScreen::Exiting,
+                        KeyCode::Enter => app.process_cmd(),
+                        KeyCode::Char(to_insert) => app.add_char(to_insert),
+                        KeyCode::Backspace => app.delete_char(),
+                        _ => {}
+                    },
 
-                    CurrentScreen::GameOver => {
-                        match key.code {
-                            KeyCode::Char('y') => {
-                                app.current_screen = CurrentScreen::Main;
-                                app.new_game();
-                            }
-                            KeyCode::Char('n') | KeyCode::Esc => {
-                                return Ok(true)
-                            }
-                            _ => {}
+                    CurrentScreen::GameOver => match key.code {
+                        KeyCode::Char('y') => {
+                            app.current_screen = CurrentScreen::Main;
+                            app.new_game();
                         }
-                    }
-                    CurrentScreen::Exiting => {
-                        match key.code {
-                            KeyCode::Char('y') => {
-                                return Ok(true)
-                            }
-                            KeyCode::Char('n') => {
-                                app.current_screen = CurrentScreen::Main;
-                            }
-                            _ => {}
+                        KeyCode::Char('n') | KeyCode::Esc => return Ok(true),
+                        _ => {}
+                    },
+                    CurrentScreen::Exiting => match key.code {
+                        KeyCode::Char('y') => return Ok(true),
+                        KeyCode::Char('n') => {
+                            app.current_screen = CurrentScreen::Main;
                         }
-                    }
+                        _ => {}
+                    },
                 }
             }
         }

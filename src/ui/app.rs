@@ -1,22 +1,22 @@
+use crate::engine::game::{Game, MoveError, Status};
+use crate::ui::ui;
+use crossterm::event;
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
+use image::{DynamicImage, ImageReader};
+use ratatui::layout::Rect;
+use ratatui::widgets::{ScrollbarState, TableState};
+use ratatui::{DefaultTerminal, Frame};
+use ratatui_image::picker::Picker;
+use ratatui_image::protocol::StatefulProtocol;
+use ratatui_image::{Image, Resize, StatefulImage};
+use rodio::buffer::SamplesBuffer;
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::path::Path;
-use crossterm::event;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
-use image::{DynamicImage, ImageReader};
-use ratatui::{DefaultTerminal, Frame};
-use ratatui::layout::Rect;
-use ratatui::widgets::{ScrollbarState, TableState};
-use ratatui_image::picker::Picker;
-use ratatui_image::protocol::StatefulProtocol;
-use ratatui_image::{Image, Resize, StatefulImage};
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
-use rodio::buffer::SamplesBuffer;
-use crate::engine::game::{Game, MoveError, Status};
-use crate::ui::ui;
 
 pub struct App {
     pub game: Game,
@@ -41,22 +41,19 @@ pub struct App {
     pub chess_pieces: HashMap<char, RefCell<StatefulProtocol>>,
     pub picker: Picker,
 
-
     _audio_stream: OutputStream,
     audio_stream_handle: OutputStreamHandle,
 
     audio_buffers: HashMap<Audio, SamplesBuffer<f32>>,
     audio_sink: Sink,
-
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 enum Audio {
     Move,
     Notify,
-    Error
+    Error,
 }
-
 
 pub enum CurrentScreen {
     Main,
@@ -113,7 +110,8 @@ impl App {
                 Audio::Error => "error",
             };
 
-            let file = BufReader::new(File::open(format!("./assets/audio/{}.mp3", filename)).unwrap());
+            let file =
+                BufReader::new(File::open(format!("./assets/audio/{}.mp3", filename)).unwrap());
             // Decode that sound file into a source
             let source = Decoder::new(file).unwrap();
 
@@ -127,7 +125,6 @@ impl App {
         }
 
         let audio_sink = Sink::try_new(&audio_stream_handle).unwrap();
-
 
         App {
             game: Game::default(),
@@ -191,13 +188,11 @@ impl App {
                 if self.show_scrollbar {
                     self.scroll_down(self.visible_moves);
                 }
-
             }
             Err(err) => {
                 self.error = Some(err);
                 self.play_audio(Audio::Error);
             }
-
         }
     }
 
@@ -226,11 +221,15 @@ impl App {
     }
 
     pub fn scroll_up(&mut self, amount: usize) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(amount).clamp(0, self.moves.len());
+        self.scroll_offset = self.scroll_offset
+            .saturating_sub(amount)
+            .clamp(0, self.moves.len());
     }
 
     pub fn scroll_down(&mut self, amount: usize) {
-        self.scroll_offset = self.scroll_offset.saturating_add(amount).clamp(0, self.moves.len());
+        self.scroll_offset = self.scroll_offset
+            .saturating_add(amount)
+            .clamp(0, self.moves.len());
     }
 
     pub fn add_char(&mut self, ch: char) {

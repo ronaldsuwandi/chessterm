@@ -1,4 +1,7 @@
-use crate::engine::moves::{compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves, compute_queens_moves, compute_rooks_moves, WHITE_PAWN_MOVES};
+use crate::engine::moves::{
+    compute_bishops_moves, compute_king_moves, compute_knights_moves, compute_pawns_moves,
+    compute_queens_moves, compute_rooks_moves, WHITE_PAWN_MOVES,
+};
 use crate::engine::parser::Piece;
 
 #[derive(Debug, Clone, Copy)]
@@ -18,7 +21,7 @@ pub struct Board {
     pub black_king: u64,
     pub white_pieces: u64,
     pub black_pieces: u64,
-    
+
     pub occupied: u64,
     pub free: u64,
 
@@ -118,7 +121,6 @@ impl Board {
                     file = ((file as u8) + (c as u8 - '0' as u8)) as char;
                 }
                 _ => panic!("Invalid FEN character: {}", c),
-
             }
         }
 
@@ -204,14 +206,20 @@ impl Board {
     }
 
     pub fn update_compute_moves(&mut self) {
-        (self.white_pawns_pseudolegal_moves, self.white_pawns_attack_moves) = compute_pawns_moves(&self, true);
+        (
+            self.white_pawns_pseudolegal_moves,
+            self.white_pawns_attack_moves,
+        ) = compute_pawns_moves(&self, true);
         self.white_knights_pseudolegal_moves = compute_knights_moves(&self, true);
         self.white_rooks_pseudolegal_moves = compute_rooks_moves(&self, true);
         self.white_bishops_pseudolegal_moves = compute_bishops_moves(&self, true);
         self.white_queens_pseudolegal_moves = compute_queens_moves(&self, true);
         self.white_king_pseudolegal_moves = compute_king_moves(&self, true);
 
-        (self.black_pawns_pseudolegal_moves, self.black_pawns_attack_moves) = compute_pawns_moves(&self, false);
+        (
+            self.black_pawns_pseudolegal_moves,
+            self.black_pawns_attack_moves,
+        ) = compute_pawns_moves(&self, false);
         self.black_knights_pseudolegal_moves = compute_knights_moves(&self, false);
         self.black_rooks_pseudolegal_moves = compute_rooks_moves(&self, false);
         self.black_bishops_pseudolegal_moves = compute_bishops_moves(&self, false);
@@ -366,29 +374,77 @@ impl Board {
                 let square_index = rank * 8 + file;
 
                 let piece = if (self.white_pawns >> square_index) & 1 != 0 {
-                    if unicode { '♟' } else { 'P' }
+                    if unicode {
+                        '♟'
+                    } else {
+                        'P'
+                    }
                 } else if (self.black_pawns >> square_index) & 1 != 0 {
-                    if unicode { '♙' } else { 'p' }
+                    if unicode {
+                        '♙'
+                    } else {
+                        'p'
+                    }
                 } else if (self.white_rooks >> square_index) & 1 != 0 {
-                    if unicode { '♜' } else { 'R' }
+                    if unicode {
+                        '♜'
+                    } else {
+                        'R'
+                    }
                 } else if (self.black_rooks >> square_index) & 1 != 0 {
-                    if unicode { '♖' } else { 'r' }
+                    if unicode {
+                        '♖'
+                    } else {
+                        'r'
+                    }
                 } else if (self.white_knights >> square_index) & 1 != 0 {
-                    if unicode { '♞' } else { 'N' }
+                    if unicode {
+                        '♞'
+                    } else {
+                        'N'
+                    }
                 } else if (self.black_knights >> square_index) & 1 != 0 {
-                    if unicode { '♘' } else { 'n' }
+                    if unicode {
+                        '♘'
+                    } else {
+                        'n'
+                    }
                 } else if (self.white_bishops >> square_index) & 1 != 0 {
-                    if unicode { '♝' } else { 'B' }
+                    if unicode {
+                        '♝'
+                    } else {
+                        'B'
+                    }
                 } else if (self.black_bishops >> square_index) & 1 != 0 {
-                    if unicode { '♗' } else { 'b' }
+                    if unicode {
+                        '♗'
+                    } else {
+                        'b'
+                    }
                 } else if (self.white_queens >> square_index) & 1 != 0 {
-                    if unicode { '♛' } else { 'Q' }
+                    if unicode {
+                        '♛'
+                    } else {
+                        'Q'
+                    }
                 } else if (self.black_queens >> square_index) & 1 != 0 {
-                    if unicode { '♕' } else { 'q' }
+                    if unicode {
+                        '♕'
+                    } else {
+                        'q'
+                    }
                 } else if (self.white_king >> square_index) & 1 != 0 {
-                    if unicode { '♚' } else { 'K' }
+                    if unicode {
+                        '♚'
+                    } else {
+                        'K'
+                    }
                 } else if (self.black_king >> square_index) & 1 != 0 {
-                    if unicode { '♔' } else { 'k' }
+                    if unicode {
+                        '♔'
+                    } else {
+                        'k'
+                    }
                 } else {
                     '.' // Empty square
                 };
@@ -401,13 +457,11 @@ impl Board {
 
     // Temporary helper function to render the chess board in terminal
     pub fn render(&self) {
-
-
         // Render the board
         println!("  +------------------------+");
-        for (rank, row) in self.pieces_array((true)).iter().enumerate().rev() {
+        for (rank, row) in self.pieces_array(true).iter().enumerate().rev() {
             print!("{} |", rank + 1); // Print rank number
-            for (file,piece) in row.iter().enumerate() {
+            for (file, piece) in row.iter().enumerate() {
                 print!(" r={rank},f={file},{} ", piece);
             }
             println!("|");
@@ -415,7 +469,7 @@ impl Board {
         println!("  +------------------------+");
         println!("    a  b  c  d  e  f  g  h");
     }
-    
+
     /// Helper function to return the piece type based on position
     /// returns optional piece type and boolean flag to indicate if it's white or black
     pub fn get_piece_type_at(&self, position: u64) -> Option<(Piece, bool)> {
@@ -726,7 +780,20 @@ pub mod tests {
             .build();
         let black_pawns = PositionBuilder::new().add_piece('f', 7).build();
 
-        let mut board = Board::new(white_pawns, 0, 0, 0, 0, bitboard_single('e', 1).unwrap(), black_pawns, 0, 0, 0, 0, bitboard_single('e', 8).unwrap());
+        let mut board = Board::new(
+            white_pawns,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 1).unwrap(),
+            black_pawns,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 8).unwrap(),
+        );
         board.move_piece(
             bitboard_single('e', 2).unwrap(),
             bitboard_single('e', 4).unwrap(),
@@ -769,7 +836,20 @@ pub mod tests {
             .build();
         let black_pawns = PositionBuilder::new().add_piece('f', 7).build();
 
-        let mut board = Board::new(white_pawns, 0, 0, 0, 0, bitboard_single('e', 1).unwrap(), black_pawns, 0, 0, 0, 0, bitboard_single('e', 8).unwrap());
+        let mut board = Board::new(
+            white_pawns,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 1).unwrap(),
+            black_pawns,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 8).unwrap(),
+        );
 
         assert_eq!(white_pawns, board.white_pawns);
         assert_eq!(black_pawns, board.black_pawns);
@@ -805,8 +885,20 @@ pub mod tests {
             .add_piece('g', 7)
             .build();
 
-        let mut board = Board::new(white_pawns, 0, 0, 0, 0, bitboard_single('e', 1).unwrap(),
-                                   black_pawns, 0, 0, 0, 0, bitboard_single('e', 8).unwrap());
+        let mut board = Board::new(
+            white_pawns,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 1).unwrap(),
+            black_pawns,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 8).unwrap(),
+        );
 
         let actual_white_piece = *board
             .get_piece_at(bitboard_single('e', 2).unwrap(), true)
@@ -839,7 +931,20 @@ pub mod tests {
             .build();
         let white_queen = PositionBuilder::new().add_piece('a', 1).build();
 
-        let mut board = Board::new(white_pawns, 0, 0, 0, white_queen, bitboard_single('e', 1).unwrap(), 0, 0, 0, 0, 0, bitboard_single('e', 8).unwrap());
+        let mut board = Board::new(
+            white_pawns,
+            0,
+            0,
+            0,
+            white_queen,
+            bitboard_single('e', 1).unwrap(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            bitboard_single('e', 8).unwrap(),
+        );
         assert_eq!(
             PositionBuilder::new().add_piece('a', 1).build(),
             board.white_queens
@@ -875,9 +980,7 @@ pub mod tests {
                 .build(),
             board.white_queens
         );
-        assert_eq!(
-            0, board.white_pawns
-        );
+        assert_eq!(0, board.white_pawns);
         assert_eq!(
             PositionBuilder::new().add_piece('d', 8).build(),
             board.white_knights
