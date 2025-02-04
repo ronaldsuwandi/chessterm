@@ -65,8 +65,26 @@ chessterm is **strictly designed for 2-player, human-vs-human chess**
 
 ## 📦 Installation
 
-You can download the latest release and run the command
-`chessterm` or `chessterm --halfblocks` to use halfblocks rendering
+You can download the [latest release](https://github.com/ronaldsuwandi/chessterm/releases)
+and extract the package
+
+```
+tar -xzvf chessterm-<os>-<version>.tar.gz    
+```
+
+And run the binary either 
+
+```
+chessterm
+```
+
+or 
+
+```
+chessterm --halfblocks
+```
+
+to use halfblocks rendering (for iTerm2)
 
 Make sure your terminal size is at least `132x46` for proper rendering
 
