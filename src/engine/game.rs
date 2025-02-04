@@ -139,10 +139,11 @@ impl Game {
     fn get_computed_pseudolegal_moves(&self, piece_type: Piece, is_white: bool) -> u64 {
         match piece_type {
             Piece::Pawn => {
+                // pawn includes both moves and attack moves
                 if is_white {
-                    self.board.white_pawns_pseudolegal_moves
+                    self.board.white_pawns_pseudolegal_moves | self.board.white_pawns_attack_moves
                 } else {
-                    self.board.black_pawns_pseudolegal_moves
+                    self.board.black_pawns_pseudolegal_moves | self.board.black_pawns_attack_moves
                 }
             }
             Piece::Knight => {
@@ -2045,16 +2046,11 @@ pub mod tests {
     }
 
     #[test]
-    fn test_move_double_pawn() {
-        let mut game = Game::default();
-
-        process_moves(
-            &mut game,
-            &["e4", "e5", "d4", "d5", "dxe5", "a6"]
-        );
-
-
-        game.board.render();
-        println!("{:?}", game.process_move("e6"));
+    fn test_valid_move() {
+        let board = Board::from_fen("r7/1p1k1ppp/p1n4q/1B6/3Pp3/4P3/1B1N1PPP/R2QK2R");
+        let mut game = Game::new(board);
+        // black's turn
+        game.turn = 2;
+        process_moves(&mut game, &["axb5"]);
     }
 }
