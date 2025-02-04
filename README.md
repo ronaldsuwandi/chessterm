@@ -1,4 +1,4 @@
-# **♟️ Chessterm – A Terminal-Based Chess Interface**
+# chessterm
 A Rust-powered 🦀 chess engine in a terminal
 
 ![chessterm-kitty.gif](screenshots/chessterm-kitty.gif)
