@@ -2,11 +2,11 @@ use crate::engine::game::{Game, MoveError, Status};
 use crate::ui::ui;
 use crossterm::event;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
-use image::{DynamicImage, ImageReader};
+use image::{DynamicImage, ImageReader, Rgb, Rgba};
 use ratatui::layout::Rect;
 use ratatui::widgets::{ScrollbarState, TableState};
 use ratatui::{DefaultTerminal, Frame};
-use ratatui_image::picker::Picker;
+use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
 use ratatui_image::{Image, Resize, StatefulImage};
 use rodio::buffer::SamplesBuffer;
@@ -17,6 +17,7 @@ use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::path::Path;
+use ratatui::prelude::Color;
 
 pub struct App {
     pub game: Game,
@@ -38,8 +39,11 @@ pub struct App {
     pub flipped: bool,
 
     // image related
-    pub chess_pieces: HashMap<char, RefCell<StatefulProtocol>>,
-    pub picker: Picker,
+    // mapped to both light and dark protocols
+    pub chess_pieces_light_bg: HashMap<char, RefCell<StatefulProtocol>>,
+    pub chess_pieces_dark_bg: HashMap<char, RefCell<StatefulProtocol>>,
+    pub light_picker: Picker,
+    pub dark_picker: Picker,
 
     _audio_stream: OutputStream,
     audio_stream_handle: OutputStreamHandle,
@@ -67,12 +71,23 @@ pub enum CurrentlyEditing {
 }
 
 const MAX_MOVE_LENGTH: usize = 6;
+const LIGHT_SQUARE: [u8; 4] = [235, 209, 166, 255];
+const DARK_SQUARE: [u8; 4] = [165, 117, 80, 255];
 
 impl App {
-    pub fn new() -> Self {
-        let mut pieces = HashMap::new();
+    pub fn new(force_halfblocks: bool) -> Self {
+        let mut chess_pieces_light_bg = HashMap::new();
+        let mut chess_pieces_dark_bg = HashMap::new();
         let fen_pieces = ['p', 'r', 'b', 'n', 'q', 'k', 'P', 'R', 'B', 'N', 'Q', 'K'];
-        let mut picker = Picker::from_query_stdio().unwrap();
+        let mut light_picker = Picker::from_query_stdio().unwrap();
+        let mut dark_picker = Picker::from_query_stdio().unwrap();
+        light_picker.set_background_color(LIGHT_SQUARE);
+        dark_picker.set_background_color(DARK_SQUARE);
+
+        if force_halfblocks {
+            light_picker.set_protocol_type(ProtocolType::Halfblocks);
+            dark_picker.set_protocol_type(ProtocolType::Halfblocks);
+        }
 
         for &piece in &fen_pieces {
             if piece == '.' {
@@ -95,8 +110,10 @@ impl App {
             };
             let path = format!("./assets/sprite/{}.png", filename);
             if let Ok(dyn_img) = ImageReader::open(Path::new(&path)).unwrap().decode() {
-                let protocol = picker.new_resize_protocol(dyn_img);
-                pieces.insert(piece, RefCell::new(protocol));
+                let light_protocol = light_picker.new_resize_protocol(dyn_img.clone());
+                let dark_protocol = dark_picker.new_resize_protocol(dyn_img);
+                chess_pieces_light_bg.insert(piece, RefCell::new(light_protocol));
+                chess_pieces_dark_bg.insert(piece, RefCell::new(dark_protocol));
             }
         }
 
@@ -143,8 +160,10 @@ impl App {
 
             flipped: false,
 
-            chess_pieces: pieces,
-            picker,
+            chess_pieces_light_bg,
+            chess_pieces_dark_bg,
+            light_picker,
+            dark_picker,
 
             _audio_stream,
             audio_stream_handle,
@@ -198,6 +217,7 @@ impl App {
 
     fn play_audio(&self, audio_type: Audio) {
         if let Some(buffer) = self.audio_buffers.get(&audio_type) {
+            self.audio_sink.clear();
             self.audio_sink.append(buffer.clone());
         }
     }

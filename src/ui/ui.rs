@@ -39,7 +39,7 @@ fn render_error<'a>(err: Option<MoveError>) -> Span<'a> {
 const LIGHT_SQUARE: Color = Color::Rgb(235, 209, 166);
 const DARK_SQUARE: Color = Color::Rgb(165, 117, 80);
 
-const DEFAULT_SQUARE_SIZE: u16 = 12;
+const DEFAULT_SQUARE_SIZE: u16 = 11;
 const LARGE_SQUARE_SIZE: u16 = 15;
 
 /// compute board layouts returning tuple of 3 rects:
@@ -113,6 +113,10 @@ fn actual_rank(rank: usize, flipped: bool) -> usize {
     } // Flip ranks
 }
 
+fn is_light_square(rank: usize, file: usize) -> bool {
+    (rank + file) & 1 == 1
+}
+
 fn render_square(
     frame: &mut Frame,
     file_layout: &Rc<[Rect]>,
@@ -121,10 +125,7 @@ fn render_square(
     flipped: bool,
 ) {
     let actual_file = actual_file(file, flipped);
-
-    let is_white = (rank + file) & 1 == 1;
-    let bg = if is_white { LIGHT_SQUARE } else { DARK_SQUARE };
-
+    let bg = if is_light_square(rank, file) { LIGHT_SQUARE } else { DARK_SQUARE };
     let square = Block::default().bg(bg);
     frame.render_widget(square, file_layout[actual_file]);
 }
@@ -133,6 +134,7 @@ fn render_piece(
     frame: &mut Frame,
     app: &App,
     file_layout: &Rc<[Rect]>,
+    rank: usize,
     file: usize,
     piece: char,
     flipped: bool,
@@ -140,9 +142,10 @@ fn render_piece(
     let actual_file = actual_file(file, flipped);
 
     if piece != '.' {
-        let protocol_ref = app.chess_pieces.get(&piece).unwrap();
-        let i = StatefulImage::default();
-        frame.render_stateful_widget(i, file_layout[actual_file], &mut protocol_ref.borrow_mut());
+        let chess_pieces_map = if is_light_square(rank, file) { &app.chess_pieces_light_bg } else { &app.chess_pieces_dark_bg };
+        let protocol_ref = chess_pieces_map.get(&piece).unwrap();
+        let img = StatefulImage::default();
+        frame.render_stateful_widget(img, file_layout[actual_file], &mut protocol_ref.borrow_mut());
     }
 }
 
@@ -153,8 +156,7 @@ fn render_board(app: &App, frame: &mut Frame, area: Rect, large_board: bool) {
         DEFAULT_SQUARE_SIZE
     };
 
-    let (rank_layout, rank_label_layout, file_label_layout) =
-        compute_board_layouts(area, square_size);
+    let (rank_layout, rank_label_layout, file_label_layout) = compute_board_layouts(area, square_size);
     let pieces = app.game.board.pieces_array(false);
     for (rank, files) in pieces.iter().enumerate().rev() {
         let actual_rank = actual_rank(rank, app.flipped);
@@ -168,7 +170,7 @@ fn render_board(app: &App, frame: &mut Frame, area: Rect, large_board: bool) {
         // iterate files
         for (file, piece) in files.iter().enumerate() {
             render_square(frame, &file_layout, rank, file, app.flipped);
-            render_piece(frame, app, &file_layout, file, *piece, app.flipped);
+            render_piece(frame, app, &file_layout, rank, file, *piece, app.flipped);
         }
     }
     render_file_labels(frame, file_label_layout, app.flipped);
@@ -196,7 +198,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     .split(frame.area());
 
     // divisible by 8 + 3 pixel for label
-    let board_horizontal = if large_board { 125 } else { 100 };
+    let board_horizontal = if large_board { 125 } else { 92 };
     let content_layout = Layout::horizontal([
         Constraint::Fill(1), // filler
         Constraint::Min(board_horizontal),

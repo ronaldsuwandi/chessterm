@@ -19,9 +19,9 @@ use ratatui::text::{Line, Text};
 use ratatui::widgets::{Block, Clear, Paragraph, Widget};
 use ratatui::{DefaultTerminal, Frame, Terminal};
 use std::io::{stdout, Error, ErrorKind, Stdout};
-use std::{io, process};
+use std::{env, io, process};
 
-pub const MIN_WIDTH: u16 = 140;
+pub const MIN_WIDTH: u16 = 132;
 pub const MIN_HEIGHT: u16 = 46;
 
 fn check_size(terminal: &mut DefaultTerminal) -> Result<(), io::Error> {
@@ -54,8 +54,10 @@ fn check_size(terminal: &mut DefaultTerminal) -> Result<(), io::Error> {
 }
 
 fn main() -> Result<(), io::Error> {
+    let args: Vec<String> = env::args().collect();
+    let use_halfblocks = args.contains(&"--halfblocks".to_string());
     let mut terminal = ratatui::init();
-    let mut app = App::new();
+    let mut app = App::new(use_halfblocks);
     run(&mut terminal, &mut app)?;
     ratatui::restore();
     Ok(())
