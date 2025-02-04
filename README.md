@@ -141,20 +141,77 @@ represented using bitboard (`u64`) where each bit corresponds to a square
 
 For example, this is how a **white pawn at d2 (square 11 in 0-based indexing)** is represented:
 
-`00000000 00000000 00001000 00000000 00000000 00000000 00000000 00000000`
+`00000000 00000000 00000000 00000000 00000000 00000000 00001000 00000000`
 
 Using **bitwise operations**, chessterm can:
-- Quickly **shift bits** to generate potential pawn moves (`board.white_pawns << 8` for single advance).
-- Use **AND masks** to detect if a move is blocked.
-- Compute **attack masks for sliding pieces** using precomputed rays.
+- Quickly **shift bits** to generate potential pawn moves 
+  (`board.white_pawns << 8` for a single advance)
+- Use **AND masks** to detect if a move is blocked
+- Compute **attack masks for sliding pieces** using precomputed moves and rays
+
+<details>
+<summary><code>compute_pawn_moves</code></summary>
 
 ```rust
-fn generate_pawn_moves(pawns: u64, empty_squares: u64) -> u64 {
-    let single_push = (pawns << 8) & empty_squares;
-    let double_push = ((single_push & RANK_4) << 8) & empty_squares;
-    single_push | double_push
+pub fn compute_pawns_moves(board: &Board, is_white: bool) -> (u64, u64) {
+    let mut moves = 0u64;
+    let mut attack_moves = 0u64;
+    let own_pieces: u64;
+    let mut pawns: u64;
+    let precomputed_moves: [[u64; 2]; 64];
+
+    if is_white {
+        pawns = board.white_pawns;
+        own_pieces = board.white_pieces;
+        precomputed_moves = WHITE_PAWN_MOVES;
+    } else {
+        pawns = board.black_pawns;
+        own_pieces = board.black_pieces;
+        precomputed_moves = BLACK_PAWN_MOVES;
+    };
+
+    while pawns != 0 {
+        let index = pawns.trailing_zeros() as usize;
+
+        // add pawn's precomputed moves and exclude own piece
+        moves |= precomputed_moves[index][0] & !own_pieces;
+        attack_moves |= precomputed_moves[index][1] & !own_pieces;
+
+        // additional check for double move only for rank 2 for white
+        if is_white && index >= 8 && index <= 15 {
+            // Check if both rank 3 and rank 4 squares are free
+            let rank3_free = (1u64 << (index + 8)) & board.free;
+            let rank4_free = (1u64 << (index + 16)) & board.free;
+            if rank3_free == 0 {
+                // if rank3 is blocked, remove rank 3 and rank 4
+                moves &= !(1u64 << (index + 8));
+                moves &= !(1u64 << (index + 16));
+            } else if rank4_free == 0 {
+                // if only rank 4 is blocked, remove rank 4
+                moves &= !(1u64 << (index + 16));
+            }
+        } else if !is_white && index >= 48 && index <= 55 {
+            // Check if both rank 6 and rank 5 squares are free
+            let rank6_free = (1u64 << (index - 8)) & board.free;
+            let rank5_free = (1u64 << (index - 16)) & board.free;
+            if rank6_free == 0 {
+                // if rank 6 is blocked, remove both rank 6 and 5
+                moves &= !(1u64 << (index - 16));
+                moves &= !(1u64 << (index - 8));
+            } else if rank5_free == 0 {
+                // If rank 5 is blocked, remove only the rank 5 move from precomputed moves
+                moves &= !(1u64 << (index - 16));
+            }
+        }
+
+        // Remove the processed pawns (use lsb approach)
+        pawns &= pawns - 1;
+    }
+
+    (moves, attack_moves)
 }
 ```
+</details>
 
 #### Bitboard challenges
 While efficient, it makes computation a lot trickier and challenging, dealing 
@@ -163,6 +220,11 @@ implement
 
 Another reason why this is challenging is that bitboard bit position is on 
 the reversed order compared to actual chessboard
+
+
+
+<details>
+<summary>Bitboard representation</summary>
 
 In bitboard this is how we the bits are represented where least significant bit 
 (LSB) is all the way to the right and that corresponds to A1
@@ -200,6 +262,7 @@ A3 B3 C3 D3 E3 F3 G3 H3
 A2 B2 C2 D2 E2 F2 G2 H2
 A1 B1 C1 D1 E1 F1 G1 H1
 ```
+</details>
 
 Finally, there are plenty of edge cases that needs to be taken care of such as
 double pawn resolving, en passant capture, simulate king move can't enter into 
@@ -216,14 +279,21 @@ To avoid generating moves for every piece, chessterm does **precompute moves**
 - Pawns → Separate move masks (for advancing) and attack masks 
   (for capturing diagonally)
 
+
 ```rust
 pub const KNIGHT_MOVES: [u64; 64] = precompute_moves!(precompute_knight_moves);
-fn precompute_knight_moves(index: u8) -> u64 {
+// precompute all the moves available for knights at each bit index in the bitboard
+const fn precompute_knight_moves(index: u8) -> u64 {
     let bitboard = 1u64 << index;
-    ((bitboard << 17) & !MASK_FILE_A) | ((bitboard << 15) & !MASK_FILE_H) |
-    ((bitboard << 10) & !(MASK_FILE_A | MASK_FILE_B)) | ((bitboard << 6) & !(MASK_FILE_G | MASK_FILE_H)) |
-    ((bitboard >> 17) & !MASK_FILE_H) | ((bitboard >> 15) & !MASK_FILE_A) |
-    ((bitboard >> 10) & !(MASK_FILE_G | MASK_FILE_H)) | ((bitboard >> 6) & !(MASK_FILE_A | MASK_FILE_B))
+    // use mask to avoid wrap around
+    ((bitboard << 17) & !MASK_FILE_A) // UP 2 + RIGHT 1
+        | ((bitboard << 15) & !MASK_FILE_H) // UP 2 + LEFT 1
+        | ((bitboard << 10) & !(MASK_FILE_A | MASK_FILE_B)) // UP 1 + RIGHT 2
+        | ((bitboard << 6) & !(MASK_FILE_G | MASK_FILE_H)) // UP 1 + LEFT 2
+        | ((bitboard >> 17) & !MASK_FILE_H) // DOWN 2 + LEFT 1
+        | ((bitboard >> 15) & !MASK_FILE_A) // DOWN 2 + RIGHT 1
+        | ((bitboard >> 10) & !(MASK_FILE_G | MASK_FILE_H)) // DOWN 1 + LEFT 2
+        | ((bitboard >> 6) & !(MASK_FILE_A | MASK_FILE_B)) // DOWN 1 + RIGHT 2
 }
 ```
 
