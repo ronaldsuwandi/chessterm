@@ -15,9 +15,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
-use std::io::BufReader;
+use std::io::{BufReader, Cursor};
 use std::path::Path;
+use include_dir::{include_dir, Dir};
 use ratatui::prelude::Color;
+
+static ASSETS: Dir<'_> = include_dir!("assets");
 
 pub struct App {
     pub game: Game,
@@ -74,6 +77,22 @@ const MAX_MOVE_LENGTH: usize = 6;
 const LIGHT_SQUARE: [u8; 4] = [235, 209, 166, 255];
 const DARK_SQUARE: [u8; 4] = [165, 117, 80, 255];
 
+fn get_file_contents(path: &str) -> Vec<u8> {
+    if let Some(content) = ASSETS.get_file(path).map(|f| f.contents()) {
+        content.to_vec()
+    } else {
+        vec![]
+    }
+}
+
+fn load_image(data: Vec<u8>) -> DynamicImage {
+    ImageReader::new(Cursor::new(data))
+        .with_guessed_format()
+        .expect("Failed to read image format")
+        .decode()
+        .expect("Failed to decode image")
+}
+
 impl App {
     pub fn new(force_halfblocks: bool) -> Self {
         let mut chess_pieces_light_bg = HashMap::new();
@@ -108,13 +127,12 @@ impl App {
                 'K' => "king_white",
                 _ => panic!("Unknown piece: {}", piece),
             };
-            let path = format!("./assets/sprite/{}.png", filename);
-            if let Ok(dyn_img) = ImageReader::open(Path::new(&path)).unwrap().decode() {
-                let light_protocol = light_picker.new_resize_protocol(dyn_img.clone());
-                let dark_protocol = dark_picker.new_resize_protocol(dyn_img);
-                chess_pieces_light_bg.insert(piece, RefCell::new(light_protocol));
-                chess_pieces_dark_bg.insert(piece, RefCell::new(dark_protocol));
-            }
+            let path = format!("sprite/{}.png", filename);
+            let dyn_img = load_image(get_file_contents(&path));
+            let light_protocol = light_picker.new_resize_protocol(dyn_img.clone());
+            let dark_protocol = dark_picker.new_resize_protocol(dyn_img);
+            chess_pieces_light_bg.insert(piece, RefCell::new(light_protocol));
+            chess_pieces_dark_bg.insert(piece, RefCell::new(dark_protocol));
         }
 
         let (_audio_stream, audio_stream_handle) = OutputStream::try_default().unwrap();
@@ -127,9 +145,10 @@ impl App {
                 Audio::Error => "error",
             };
 
-            let file = BufReader::new(File::open(format!("./assets/audio/{}.ogg", filename)).unwrap());
+            let path = format!("audio/{}.ogg", filename);
+            let cursor = Cursor::new(get_file_contents(&path));
             // Decode that sound file into a source
-            let source = Decoder::new(file).unwrap();
+            let source = Decoder::new(cursor).unwrap().buffered();
 
             // Convert into a buffered format
             let sample_rate = source.sample_rate();
