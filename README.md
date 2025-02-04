@@ -42,6 +42,14 @@ chessterm is **strictly designed for 2-player, human-vs-human chess**
   **improve notation practice and understand chess engine mechanics, not to 
   create a competitive AI**
 
+## 🚫 Known Limitations
+chessterm enforces **all standard chess rules**, but **does not implement** 
+the following draw conditions:
+- **Threefold Repetition Rule** – The game does not check if a position has repeated three times
+- **50-Move Rule** – The engine does not track move count for automatic draws
+
+There are **no plans to implement these**, as the primary goal of chessterm is 
+**notation practice, not full rule enforcement**
 
 ## ⚠️Compatibility Notice
 **Only tested on macOS.**
