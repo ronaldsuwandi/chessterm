@@ -43,6 +43,7 @@ fn check_size(terminal: &mut DefaultTerminal) -> Result<(), io::Error> {
                         && key.modifiers.contains(event::KeyModifiers::CONTROL)
                         || key.code == KeyCode::Esc
                     {
+                        ratatui::restore();
                         process::exit(0);
                     }
                 }
