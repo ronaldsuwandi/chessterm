@@ -422,8 +422,15 @@ pub fn resolve_pawn_source(board: &Board, parsed_move: &ParsedMove, is_white: bo
                 bitboard_single(parsed_move.from_file.unwrap(), rank).unwrap() & board.white_pawns
             }
         } else {
-            // figure out from either 1 step or 2 steps backwards
-            parsed_move.to >> 8 & board.white_pawns | parsed_move.to >> 16 & board.white_pawns
+            let one_step = parsed_move.to >> 8 & board.white_pawns;
+
+            // figure out from either 1 step or 2 steps backwards if target rank is 4 only
+            if target_rank == 4 && one_step == 0 {
+                // check the 2 steps backward
+                parsed_move.to >> 16 & board.white_pawns
+            } else {
+                one_step
+            }
         }
     } else {
         if parsed_move.is_capture {
@@ -435,8 +442,14 @@ pub fn resolve_pawn_source(board: &Board, parsed_move: &ParsedMove, is_white: bo
                 bitboard_single(parsed_move.from_file.unwrap(), rank).unwrap() & board.black_pawns
             }
         } else {
-            // figure out from either 1 step or 2 steps backwards
-            parsed_move.to << 8 & board.black_pawns | parsed_move.to << 16 & board.black_pawns
+            let one_step = parsed_move.to << 8 & board.black_pawns;
+            // figure out from either 1 step or 2 steps backwards if target rank is 5 only
+            if target_rank == 5 && one_step == 0 {
+                // check 2 steps backward
+                parsed_move.to << 16 & board.black_pawns
+            } else {
+                one_step
+            }
         }
     }
 }
@@ -1275,6 +1288,7 @@ pub mod tests {
     #[test]
     fn test_resolve_pawn_source() {
         let white_pawns: u64 = PositionBuilder::new()
+            .add_piece('a', 2)
             .add_piece('e', 2)
             .add_piece('e', 3)
             .add_piece('h', 7)
@@ -1323,6 +1337,17 @@ pub mod tests {
             bitboard_single('a', 7).unwrap(),
             resolve_pawn_source(&board, &parse_move("a5").unwrap(), false)
         );
+
+        // resolve the first pawn that it can find from double pawn
+        assert_eq!(
+            bitboard_single('e', 3).unwrap(),
+            resolve_pawn_source(&board, &parse_move("e4").unwrap(), true)
+        );
+
+        assert_eq!(
+            bitboard_single('a', 2).unwrap(),
+            resolve_pawn_source(&board, &parse_move("a4").unwrap(), true)
+        )
     }
 
     #[test]

@@ -127,8 +127,7 @@ impl App {
                 Audio::Error => "error",
             };
 
-            let file =
-                BufReader::new(File::open(format!("./assets/audio/{}.mp3", filename)).unwrap());
+            let file = BufReader::new(File::open(format!("./assets/audio/{}.ogg", filename)).unwrap());
             // Decode that sound file into a source
             let source = Decoder::new(file).unwrap();
 
@@ -217,7 +216,7 @@ impl App {
 
     fn play_audio(&self, audio_type: Audio) {
         if let Some(buffer) = self.audio_buffers.get(&audio_type) {
-            self.audio_sink.clear();
+            self.audio_sink.stop();
             self.audio_sink.append(buffer.clone());
         }
     }

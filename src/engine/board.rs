@@ -462,7 +462,7 @@ impl Board {
         for (rank, row) in self.pieces_array(true).iter().enumerate().rev() {
             print!("{} |", rank + 1); // Print rank number
             for (file, piece) in row.iter().enumerate() {
-                print!(" r={rank},f={file},{} ", piece);
+                print!(" {} ", piece);
             }
             println!("|");
         }

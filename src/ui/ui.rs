@@ -252,6 +252,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                 .wrap(Wrap { trim: false });
 
             let area = centered_rect(40, 10, frame.area());
+            frame.render_widget(Clear, area); // clear the area behind popup
             frame.render_widget(exit_paragraph, area);
         }
     }
@@ -263,7 +264,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
         .style(Style::default());
 
     let title = Paragraph::new(Text::styled(
-        "chessterm 0.0.1",
+        "chessterm 0.1.0",
         Style::default().fg(Color::Green),
     ))
     .alignment(Alignment::Center)

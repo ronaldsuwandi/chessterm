@@ -2,6 +2,11 @@
 name = "chessterm"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/ronaldsuwandi/chessterm"
+readme = "README.md"
+license = "MIT"
+rust-version = "1.80.0"
+description = "Terminal based chess engine"
 
 [dependencies]
 crossterm = "0.28.1"

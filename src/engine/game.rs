@@ -1,5 +1,5 @@
 use crate::engine::board::{is_file, is_rank, Board, MASK_FILE_A, MASK_FILE_B, MASK_FILE_C, MASK_FILE_D, MASK_FILE_F, MASK_FILE_G, MASK_FILE_H, MASK_RANK_1, MASK_RANK_8};
-use crate::engine::moves::{find_blocker_mask, resolve_bishop_source, resolve_king_source, resolve_knight_source, resolve_pawn_source, resolve_queen_source, resolve_rook_source, BISHOP_RAYS_DIRECTIONS, BLACK_PAWN_MOVES, KING_MOVES, KNIGHT_MOVES, QUEEN_RAYS, QUEEN_RAYS_DIRECTIONS, RIGHT, ROOK_RAYS, ROOK_RAYS_DIRECTIONS, UP, UP_LEFT, UP_RIGHT, WHITE_PAWN_MOVES};
+use crate::engine::moves::{find_blocker_mask, resolve_bishop_source, resolve_king_source, resolve_knight_source, resolve_pawn_source, resolve_queen_source, resolve_rook_source, BISHOP_RAYS_DIRECTIONS, BLACK_PAWN_MOVES, KING_MOVES, KNIGHT_MOVES, QUEEN_RAYS, QUEEN_RAYS_DIRECTIONS, ROOK_RAYS_DIRECTIONS, WHITE_PAWN_MOVES};
 use crate::engine::parser::{parse_move, ParsedMove, Piece, SpecialMove};
 
 const MASK_CASTLING_PATH_KINGSIDE: u64 = (MASK_FILE_F | MASK_FILE_G) & (MASK_RANK_1 | MASK_RANK_8);
@@ -2042,5 +2042,19 @@ pub mod tests {
         );
         assert_eq!(Status::Draw, game.status);
         process_moves_error(&mut game, &[("Kg5", MoveError::GameOver)]);
+    }
+
+    #[test]
+    fn test_move_double_pawn() {
+        let mut game = Game::default();
+
+        process_moves(
+            &mut game,
+            &["e4", "e5", "d4", "d5", "dxe5", "a6"]
+        );
+
+
+        game.board.render();
+        println!("{:?}", game.process_move("e6"));
     }
 }
