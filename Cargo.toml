@@ -8,6 +8,10 @@ license = "MIT"
 rust-version = "1.80.0"
 description = "Terminal based chess engine"
 
+[profile.release]
+codegen-units = 1
+lto = true
+
 [dependencies]
 crossterm = "0.28.1"
 ratatui = "0.29.0"
